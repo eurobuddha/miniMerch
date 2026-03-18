@@ -1,0 +1,822 @@
+:root {
+    --primary-green: #2D5016;
+    --bright-green: #4CAF50;
+    --neon-green: #39FF14;
+    --orange: #FF6B35;
+    --bright-orange: #FF8C00;
+    --yellow: #FFD700;
+    --purple: #9B59B6;
+    --pink: #FF69B4;
+    --brown: #8B4513;
+    --paper: #D2B48C;
+    --cream: #FFF8DC;
+    --dark: #1a1a1a;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Nunito', sans-serif;
+    min-height: 100vh;
+    color: var(--cream);
+    overflow-x: hidden;
+    position: relative;
+}
+
+.tie-dye-bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    background: 
+        radial-gradient(ellipse at 20% 20%, rgba(155, 89, 182, 0.4) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(255, 107, 53, 0.4) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 80%, rgba(45, 80, 22, 0.5) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(255, 215, 0, 0.3) 0%, transparent 50%),
+        linear-gradient(135deg, #1a0a2e 0%, #16213e 50%, #1a2a1a 100%);
+    animation: bgShift 20s ease-in-out infinite alternate;
+}
+
+@keyframes bgShift {
+    0% { filter: hue-rotate(0deg); }
+    100% { filter: hue-rotate(20deg); }
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 2rem;
+    background: linear-gradient(180deg, rgba(0,0,0,0.5) 0%, transparent 100%);
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.logo-icon {
+    font-size: 2.5rem;
+    animation: sway 3s ease-in-out infinite;
+}
+
+@keyframes sway {
+    0%, 100% { transform: rotate(-5deg); }
+    50% { transform: rotate(5deg); }
+}
+
+.logo h1 {
+    font-family: 'Lilita One', cursive;
+    font-size: 2rem;
+    color: var(--yellow);
+    text-shadow: 
+        3px 3px 0 var(--orange),
+        6px 6px 0 rgba(0,0,0,0.3);
+    letter-spacing: 2px;
+}
+
+.peace-sign {
+    animation: spin 20s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.main-content {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 200px);
+    padding: 2rem;
+}
+
+.product-card {
+    background: linear-gradient(145deg, var(--paper) 0%, #c4a67a 100%);
+    border-radius: 20px;
+    padding: 2rem;
+    max-width: 450px;
+    width: 100%;
+    box-shadow: 
+        0 10px 40px rgba(0,0,0,0.4),
+        inset 0 2px 0 rgba(255,255,255,0.3);
+    border: 4px solid var(--brown);
+    position: relative;
+    overflow: hidden;
+}
+
+.product-card::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 10px,
+        rgba(139, 69, 19, 0.1) 10px,
+        rgba(139, 69, 19, 0.1) 20px
+    );
+    pointer-events: none;
+}
+
+.product-image-container {
+    position: relative;
+    border-radius: 15px;
+    overflow: hidden;
+    border: 3px solid var(--brown);
+    margin-bottom: 1.5rem;
+}
+
+.product-image {
+    width: 100%;
+    height: 250px;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.3s ease;
+}
+
+.product-image-container:hover .product-image {
+    transform: scale(1.05);
+}
+
+.product-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: var(--bright-green);
+    color: white;
+    padding: 5px 15px;
+    border-radius: 20px;
+    font-weight: 800;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.product-info {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.product-name {
+    font-family: 'Lilita One', cursive;
+    font-size: 1.8rem;
+    color: var(--primary-green);
+    text-shadow: 2px 2px 0 rgba(255,255,255,0.5);
+    margin-bottom: 0.5rem;
+}
+
+.product-description {
+    color: var(--brown);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    margin-bottom: 1rem;
+}
+
+.price-display {
+    display: flex;
+    justify-content: space-around;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.price-usd, .price-crypto {
+    background: rgba(0,0,0,0.1);
+    padding: 0.8rem 1.2rem;
+    border-radius: 15px;
+    text-align: center;
+}
+
+.price-label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--brown);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.3rem;
+}
+
+.price-value {
+    font-family: 'Lilita One', cursive;
+    font-size: 1.5rem;
+    color: var(--primary-green);
+}
+
+.price-value.crypto {
+    font-size: 1.1rem;
+    display: block;
+    color: #FFD700;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+.size-selector {
+    margin-bottom: 1.5rem;
+}
+
+.size-selector h3 {
+    font-family: 'Lilita One', cursive;
+    font-size: 1.2rem;
+    color: var(--primary-green);
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.size-options {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.5rem;
+}
+
+.size-btn {
+    background: linear-gradient(145deg, var(--cream) 0%, #e8dcc8 100%);
+    border: 3px solid var(--brown);
+    border-radius: 12px;
+    padding: 0.8rem 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.size-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.size-btn.active {
+    background: linear-gradient(145deg, var(--bright-green) 0%, var(--primary-green) 100%);
+    border-color: var(--primary-green);
+    color: white;
+}
+
+.size-name {
+    font-weight: 800;
+    font-size: 0.9rem;
+}
+
+.size-weight {
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+
+.size-percent {
+    font-size: 0.65rem;
+    opacity: 0.7;
+}
+
+.quantity-selector {
+    margin-bottom: 1.5rem;
+}
+
+.quantity-selector h3 {
+    font-family: 'Lilita One', cursive;
+    font-size: 1.2rem;
+    color: var(--primary-green);
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.quantity-input {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0;
+}
+
+.qty-btn {
+    width: 50px;
+    height: 50px;
+    background: linear-gradient(145deg, var(--orange) 0%, var(--bright-orange) 100%);
+    border: 3px solid var(--brown);
+    border-radius: 12px;
+    color: white;
+    font-size: 1.8rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.qty-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.qty-btn:active {
+    transform: translateY(1px);
+}
+
+#quantity-input {
+    width: 80px;
+    height: 50px;
+    text-align: center;
+    font-family: 'Lilita One', cursive;
+    font-size: 1.5rem;
+    border: 3px solid var(--brown);
+    border-left: none;
+    border-right: none;
+    background: var(--cream);
+    color: var(--primary-green);
+    -moz-appearance: textfield;
+}
+
+#quantity-input::-webkit-outer-spin-button,
+#quantity-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.quantity-label {
+    text-align: center;
+    margin-top: 0.8rem;
+    color: var(--brown);
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.quantity-label span {
+    font-family: 'Lilita One', cursive;
+    font-size: 1.3rem;
+    color: var(--primary-green);
+}
+
+.buy-button {
+    width: 100%;
+    padding: 1rem 2rem;
+    background: linear-gradient(145deg, var(--orange) 0%, var(--bright-orange) 100%);
+    border: none;
+    border-radius: 15px;
+    color: white;
+    font-family: 'Lilita One', cursive;
+    font-size: 1.4rem;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.3s ease;
+    box-shadow: 
+        0 6px 0 #cc5500,
+        0 10px 20px rgba(0,0,0,0.3);
+    text-shadow: 2px 2px 0 rgba(0,0,0,0.3);
+}
+
+.buy-button:hover {
+    transform: translateY(-3px);
+    box-shadow: 
+        0 9px 0 #cc5500,
+        0 15px 30px rgba(0,0,0,0.4);
+}
+
+.buy-button:active {
+    transform: translateY(3px);
+    box-shadow: 
+        0 3px 0 #cc5500,
+        0 5px 10px rgba(0,0,0,0.3);
+}
+
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    color: var(--brown);
+}
+
+.spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid var(--paper);
+    border-top-color: var(--bright-green);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    padding: 1rem;
+}
+
+.modal-content {
+    background: linear-gradient(145deg, var(--paper) 0%, #c4a67a 100%);
+    border-radius: 20px;
+    padding: 2rem;
+    max-width: 450px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    border: 4px solid var(--brown);
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+
+.modal-close {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    background: none;
+    border: none;
+    font-size: 2rem;
+    color: var(--brown);
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.modal-close:hover {
+    transform: rotate(90deg);
+}
+
+.modal-header {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.modal-header h2 {
+    font-family: 'Lilita One', cursive;
+    font-size: 1.8rem;
+    color: var(--primary-green);
+    margin-bottom: 0.5rem;
+}
+
+.checkout-summary {
+    background: rgba(0,0,0,0.1);
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.summary-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px dashed var(--brown);
+    color: var(--brown);
+}
+
+.summary-item:last-child {
+    border-bottom: none;
+}
+
+.summary-item.crypto {
+    color: var(--primary-green);
+    font-weight: 700;
+}
+
+.payment-method h3 {
+    font-family: 'Lilita One', cursive;
+    font-size: 1.2rem;
+    color: var(--primary-green);
+    margin-bottom: 0.8rem;
+}
+
+.payment-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.payment-btn {
+    padding: 1rem;
+    background: linear-gradient(145deg, var(--cream) 0%, #e8dcc8 100%);
+    border: 3px solid var(--brown);
+    border-radius: 12px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--brown);
+    transition: all 0.2s ease;
+}
+
+.payment-btn:hover {
+    transform: translateY(-2px);
+}
+
+.payment-btn.active {
+    background: linear-gradient(145deg, var(--bright-green) 0%, var(--primary-green) 100%);
+    border-color: var(--primary-green);
+    color: white;
+}
+
+.payment-icon {
+    font-size: 1.5rem;
+}
+
+.shipping-method {
+    margin-bottom: 1.5rem;
+}
+
+.shipping-method h3 {
+    font-family: 'Lilita One', cursive;
+    font-size: 1.2rem;
+    color: var(--primary-green);
+    margin-bottom: 0.8rem;
+}
+
+.shipping-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.shipping-btn {
+    padding: 1rem;
+    background: linear-gradient(145deg, var(--cream) 0%, #e8dcc8 100%);
+    border: 3px solid var(--brown);
+    border-radius: 12px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--brown);
+    transition: all 0.2s ease;
+}
+
+.shipping-btn:hover {
+    transform: translateY(-2px);
+}
+
+.shipping-btn.active {
+    background: linear-gradient(145deg, var(--bright-green) 0%, var(--primary-green) 100%);
+    border-color: var(--primary-green);
+    color: white;
+}
+
+.shipping-icon {
+    font-size: 1.5rem;
+}
+
+.shipping-price {
+    font-size: 0.85rem;
+    opacity: 0.8;
+}
+
+.postal-address h3 {
+    font-family: 'Lilita One', cursive;
+    font-size: 1.2rem;
+    color: var(--primary-green);
+    margin-bottom: 0.8rem;
+}
+
+.postal-address textarea {
+    width: 100%;
+    padding: 1rem;
+    border: 3px solid var(--brown);
+    border-radius: 12px;
+    font-family: 'Nunito', sans-serif;
+    font-size: 1rem;
+    resize: vertical;
+    background: var(--cream);
+    color: var(--dark);
+}
+
+.postal-address textarea:focus {
+    outline: none;
+    border-color: var(--bright-green);
+}
+
+.address-note {
+    font-size: 0.8rem;
+    color: var(--brown);
+    margin-top: 0.5rem;
+    font-style: italic;
+}
+
+.pay-button {
+    width: 100%;
+    padding: 1rem 2rem;
+    background: linear-gradient(145deg, var(--bright-green) 0%, var(--primary-green) 100%);
+    border: none;
+    border-radius: 15px;
+    color: white;
+    font-family: 'Lilita One', cursive;
+    font-size: 1.3rem;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+    transition: all 0.3s ease;
+    box-shadow: 
+        0 6px 0 #1a3a0d,
+        0 10px 20px rgba(0,0,0,0.3);
+}
+
+.pay-button:hover {
+    transform: translateY(-3px);
+    box-shadow: 
+        0 9px 0 #1a3a0d,
+        0 15px 30px rgba(0,0,0,0.4);
+}
+
+.pay-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.payment-status {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.payment-status.success {
+    background: rgba(76, 175, 80, 0.2);
+    border: 2px solid var(--bright-green);
+    color: var(--primary-green);
+}
+
+.payment-status.error {
+    background: rgba(244, 67, 54, 0.2);
+    border: 2px solid #f44336;
+    color: #c62828;
+}
+
+.payment-status.pending {
+    background: rgba(255, 193, 7, 0.2);
+    border: 2px solid #ffc107;
+    color: #f57c00;
+}
+
+.confirmation {
+    text-align: center;
+}
+
+.confetti {
+    font-size: 3rem;
+    animation: bounce 1s ease-in-out infinite;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+.confirmation h2 {
+    font-family: 'Lilita One', cursive;
+    font-size: 1.8rem;
+    color: var(--primary-green);
+    margin-bottom: 0.5rem;
+}
+
+.confirmation p {
+    color: var(--brown);
+    margin-bottom: 1rem;
+}
+
+.tx-details {
+    background: rgba(0,0,0,0.1);
+    padding: 1rem;
+    border-radius: 12px;
+    margin: 1rem 0;
+}
+
+.tx-id {
+    font-family: monospace;
+    font-size: 0.75rem;
+    word-break: break-all;
+    background: var(--cream);
+    padding: 0.5rem;
+    border-radius: 8px;
+    margin-top: 0.5rem;
+}
+
+.tx-note {
+    font-size: 0.8rem;
+    font-style: italic;
+}
+
+.delivery-note {
+    background: rgba(76, 175, 80, 0.1);
+    padding: 1rem;
+    border-radius: 12px;
+    margin: 1rem 0;
+}
+
+.delivery-note p {
+    margin: 0.3rem 0;
+}
+
+.close-btn {
+    padding: 1rem 2rem;
+    background: linear-gradient(145deg, var(--orange) 0%, var(--bright-orange) 100%);
+    border: none;
+    border-radius: 15px;
+    color: white;
+    font-family: 'Lilita One', cursive;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 
+        0 4px 0 #cc5500,
+        0 8px 15px rgba(0,0,0,0.3);
+}
+
+.close-btn:hover {
+    transform: translateY(-2px);
+}
+
+.footer {
+    text-align: center;
+    padding: 2rem;
+    color: var(--cream);
+    opacity: 0.7;
+}
+
+.minima-text {
+    color: var(--yellow);
+    font-weight: 700;
+}
+
+.peace {
+    margin-top: 0.5rem;
+    font-style: italic;
+}
+
+@media (max-width: 480px) {
+    .header {
+        padding: 1rem;
+    }
+    
+    .logo h1 {
+        font-size: 1.5rem;
+    }
+    
+    .product-card {
+        padding: 1.5rem;
+    }
+    
+    .product-image {
+        height: 200px;
+    }
+    
+    .size-options {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .size-btn {
+        padding: 0.6rem;
+    }
+    
+    .buy-button {
+        font-size: 1.2rem;
+        flex-direction: column;
+        gap: 0.3rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

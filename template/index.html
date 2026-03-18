@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>miShop</title>
+    <link rel="icon" href="icon.png" type="image/png">
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="tie-dye-bg"></div>
+    
+    <header class="header">
+        <div class="logo">
+            <span class="logo-icon">🛒</span>
+            <h1>miShop</h1>
+        </div>
+        <div class="header-decoration">
+            <svg class="peace-sign" viewBox="0 0 100 100" width="40" height="40">
+                <circle cx="50" cy="50" r="45" fill="none" stroke="#FFD700" stroke-width="4"/>
+                <line x1="50" y1="5" x2="50" y2="50" stroke="#FFD700" stroke-width="4"/>
+                <line x1="50" y1="50" x2="85" y2="75" stroke="#FFD700" stroke-width="4"/>
+                <line x1="50" y1="50" x2="15" y2="75" stroke="#FFD700" stroke-width="4"/>
+                <circle cx="50" cy="50" r="20" fill="#FFD700"/>
+                <circle cx="50" cy="50" r="12" fill="#2D5016"/>
+            </svg>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div class="product-card">
+            <div class="product-image-container">
+                <img id="product-image" src="item.jpg" alt="Product" class="product-image">
+                <div class="product-badge">Fresh</div>
+            </div>
+            
+            <div class="product-info">
+                <h2 id="product-name" class="product-name">Loading...</h2>
+                <p id="product-description" class="product-description">Loading product details...</p>
+                
+                <div class="price-display">
+                    <div class="price-usd">
+                        <span class="price-label">Price (MXUSDT)</span>
+                        <span id="price-usd-value" class="price-value">$0.00</span>
+                    </div>
+                    <div class="price-crypto">
+                        <span class="price-label">in Minima (+10%)</span>
+                        <span id="price-minima" class="price-value crypto">-- Minima</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="size-selector" id="size-selector">
+                <h3 id="selector-title">Choose Your Size</h3>
+                <div class="size-options">
+                    <button class="size-btn" data-size="full">
+                        <span class="size-name">Full</span>
+                        <span class="size-weight">28g</span>
+                        <span class="size-percent">100%</span>
+                    </button>
+                    <button class="size-btn" data-size="half">
+                        <span class="size-name">Half</span>
+                        <span class="size-weight">14g</span>
+                        <span class="size-percent">50%</span>
+                    </button>
+                    <button class="size-btn" data-size="quarter">
+                        <span class="size-name">Quarter</span>
+                        <span class="size-weight">7g</span>
+                        <span class="size-percent">25%</span>
+                    </button>
+                    <button class="size-btn active" data-size="eighth">
+                        <span class="size-name">Eighth</span>
+                        <span class="size-weight">3.5g</span>
+                        <span class="size-percent">12.5%</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="quantity-selector hidden" id="quantity-selector">
+                <h3>Choose Quantity</h3>
+                <div class="quantity-input">
+                    <button class="qty-btn qty-minus" id="qty-minus">−</button>
+                    <input type="number" id="quantity-input" value="1" min="1" max="10">
+                    <button class="qty-btn qty-plus" id="qty-plus">+</button>
+                </div>
+                <p class="quantity-label"><span id="quantity-display">1</span> unit(s)</p>
+            </div>
+
+            <button id="buy-btn" class="buy-button">
+                <span class="btn-text">🛒 Buy Now</span>
+                <span class="btn-price">$0.00</span>
+            </button>
+
+            <div id="loading-indicator" class="loading hidden">
+                <div class="spinner"></div>
+                <span>Loading price...</span>
+            </div>
+        </div>
+    </main>
+
+    <div id="modal" class="modal hidden">
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            
+            <div class="modal-header">
+                <h2>🛒 Checkout</h2>
+                <p id="modal-product">Product</p>
+            </div>
+
+            <div class="checkout-summary">
+                <div class="summary-item">
+                    <span>Size:</span>
+                    <span id="summary-size">Eighth (3.5g)</span>
+                </div>
+                <div class="summary-item">
+                    <span>Total (MX USDT):</span>
+                    <span id="summary-usd">$0.00</span>
+                </div>
+                <div class="summary-item crypto">
+                    <span>Pay in Minima (+10%):</span>
+                    <span id="summary-minima">-- Minima</span>
+                </div>
+            </div>
+
+            <div class="payment-method">
+                <h3>Pay With</h3>
+                <div class="payment-options">
+                    <button class="payment-btn active" data-method="USDT">
+                        <span class="payment-icon">💎</span>
+                        <span>USDT</span>
+                    </button>
+                    <button class="payment-btn" data-method="MINI">
+<span class="payment-icon">
+                            <svg viewBox="0 0 100 100" width="32" height="32">
+                              <rect x="5" y="25" width="90" height="50" fill="#1a1a1a"/>
+                              <text x="50" y="62" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="bold" fill="#ffffff" text-anchor="middle" letter-spacing="1">MINIMA</text>
+                              <line x1="15" y1="68" x2="85" y2="68" stroke="#e63946" stroke-width="2"/>
+                            </svg>
+                          </span>
+                        <span>Minima</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="shipping-method">
+                <h3>📦 Shipping</h3>
+                <div class="shipping-options">
+                    <button class="shipping-btn active" data-shipping="uk" data-price="5">
+                        <span class="shipping-icon">🇬🇧</span>
+                        <span>UK Domestic</span>
+                        <span class="shipping-price">+$5.00</span>
+                    </button>
+                    <button class="shipping-btn" data-shipping="intl" data-price="20">
+                        <span class="shipping-icon">🌍</span>
+                        <span>International</span>
+                        <span class="shipping-price">+$20.00</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="postal-address">
+                <h3>📍 Postal Address</h3>
+                <textarea id="postal-address" placeholder="Enter your full postal address for delivery..." rows="4"></textarea>
+                <p class="address-note">This will be recorded with your payment transaction</p>
+            </div>
+
+            <div id="payment-section" class="payment-section">
+                <button id="pay-btn" class="pay-button">
+                    <span class="btn-text">💸 Pay Now</span>
+                    <span id="pay-amount">--</span>
+                </button>
+            </div>
+
+            <div id="payment-status" class="payment-status hidden">
+                <div class="status-message"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirmation-modal" class="modal hidden">
+        <div class="modal-content confirmation">
+            <div class="confetti">🎉</div>
+            <h2>🌟 Order Confirmed! 🌟</h2>
+            <p>Thanks for your order!</p>
+            
+            <div class="tx-details">
+                <p><strong>Transaction ID:</strong></p>
+                <p id="tx-id" class="tx-id"></p>
+                <p class="tx-note">Keep this for your records</p>
+            </div>
+            
+            <div class="delivery-note">
+                <p>📦 Your postal address has been recorded.</p>
+                <p>📦 You will receive your order soon!</p>
+            </div>
+            
+            <button id="close-confirmation" class="close-btn">Back to Shop</button>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>Powered by <span class="minima-text">Minima</span> Blockchain</p>
+        <p class="peace">☮️ Peace, Love & Decentralisation ☮️</p>
+    </footer>
+
+    <script src="mds.js"></script>
+    <script src="config.js"></script>
+    <script src="products.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
