@@ -286,8 +286,8 @@ Modes:
   units              - Buy by quantity (user selects number)
 
 Examples:
-  Weight mode:  node generator.js -n "Purple Haze" -m weight -p 10 -w 28 -d "Smooth sativa"
-  Units mode:   node generator.js -n "T-Shirts" -m units -p 25 -u 50 -d "Cotton t-shirts"
+  Weight mode:  node generator.js -n "Organic Barley" -m weight -p 5 -w 1000 -d "Premium malting barley"
+  Units mode:   node generator.js -n "Rolled Oats" -m units -p 25 -u 100 -d "Organic rolled oats"
 
 First Time Setup:
   node setup.js <your-minima-address>

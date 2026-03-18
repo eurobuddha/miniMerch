@@ -23,24 +23,24 @@ node setup.js <your-minima-address>
 
 **Weight Mode** (by gram):
 ```bash
-node generator.js -n "Purple Haze" -m weight -p 10 -w 28 -d "Smooth sativa"
+node generator.js -n "Organic Barley" -m weight -p 5 -w 1000 -d "Premium malting barley"
 ```
 
 **Units Mode** (by quantity):
 ```bash
-node generator.js -n "T-Shirts" -m units -p 25 -u 50 -d "Cotton t-shirts"
+node generator.js -n "Rolled Oats" -m units -p 25 -u 100 -d "Organic rolled oats"
 ```
 
 ### Options
 
 | Flag | Description | Example |
 |------|-------------|---------|
-| `-n, --name` | Product name | `"Purple Haze"` |
+| `-n, --name` | Product name | `"Organic Barley"` |
 | `-m, --mode` | Sales mode: `weight` or `units` | `weight` |
 | `-p, --price` | Price per gram or per unit | `10` |
-| `-w, --weight` | Total weight in grams (weight mode) | `28` |
-| `-u, --units` | Max units (units mode) | `50` |
-| `-d, --desc` | Product description | `"Smooth sativa"` |
+| `-w, --weight` | Total weight in grams (weight mode) | `1000` |
+| `-u, --units` | Max units (units mode) | `100` |
+| `-d, --desc` | Product description | `"Premium malting barley"` |
 | `-i, --image` | Path to product image | `./photo.jpg` |
 
 ## Payment Calculations
