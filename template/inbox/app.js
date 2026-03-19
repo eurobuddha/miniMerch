@@ -7,6 +7,7 @@ let myAddress = null;
 let myPublicKey = null;
 let lastCheckedCoinId = null;
 let pollingInterval = null;
+let initAttempts = 0;
 
 function textToHex(text) {
     let hex = '';
@@ -173,13 +174,15 @@ function processIncomingMessage(coin) {
 }
 
 function getMyAddress(callback) {
+    console.log('Getting address...');
     MDS.cmd('address', (response) => {
+        console.log('Address response:', JSON.stringify(response));
         if (response.status && response.response && response.response.address) {
             myAddress = response.response.address;
             console.log('My address:', myAddress);
             callback(myAddress);
         } else {
-            console.error('Failed to get address');
+            console.error('Failed to get address:', response);
             callback(null);
         }
     });
@@ -192,10 +195,6 @@ function checkForNewCoins() {
     }
     
     console.log('Checking for new coins at:', myAddress);
-    
-    MDS.cmd('balance address:' + myAddress, (response) => {
-        console.log('Balance check response:', JSON.stringify(response));
-    });
     
     MDS.cmd('coins unspent', (response) => {
         if (response.status && response.response) {
@@ -222,6 +221,8 @@ function checkForNewCoins() {
                     }
                 }
             }
+        } else {
+            console.log('Coins response failed:', response);
         }
     });
 }
@@ -314,9 +315,11 @@ function setupRefreshButton() {
     if (btn) {
         btn.addEventListener('click', () => {
             btn.textContent = 'Checking...';
+            btn.disabled = true;
             checkForNewCoins();
             setTimeout(() => {
                 btn.textContent = '🔄 Check for Orders';
+                btn.disabled = false;
             }, 3000);
         });
     }
@@ -421,6 +424,52 @@ function setupEventListeners() {
     }
 }
 
+function initInbox() {
+    initAttempts++;
+    console.log('Initializing inbox, attempt:', initAttempts);
+    
+    const addrEl = document.getElementById('vendor-address');
+    if (addrEl) {
+        addrEl.textContent = 'Getting address...';
+    }
+    
+    getMyAddress((address) => {
+        if (address) {
+            const shortAddr = address.substring(0, 10) + '...' + address.substring(address.length - 8);
+            const addrEl = document.getElementById('vendor-address');
+            if (addrEl) {
+                addrEl.textContent = shortAddr;
+                addrEl.title = address;
+            }
+            
+            registerCoinNotify();
+            
+            setTimeout(() => {
+                console.log('Initial coin check...');
+                checkForNewCoins();
+            }, 2000);
+            
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+            pollingInterval = setInterval(() => {
+                checkForNewCoins();
+            }, 30000);
+        } else {
+            console.error('Could not get address, retrying in 5 seconds...');
+            if (initAttempts < 10) {
+                setTimeout(initInbox, 5000);
+            } else {
+                const addrEl = document.getElementById('vendor-address');
+                if (addrEl) {
+                    addrEl.textContent = 'Error - retrying...';
+                }
+                setTimeout(initInbox, 30000);
+            }
+        }
+    });
+}
+
 MDS.init(async (msg) => {
     console.log('MDS event:', msg.event);
     
@@ -429,33 +478,9 @@ MDS.init(async (msg) => {
         
         currentMessages = await loadMessages();
         renderInbox();
-        
-        getMyAddress((address) => {
-            if (address) {
-                const shortAddr = address.substring(0, 10) + '...' + address.substring(address.length - 8);
-                const addrEl = document.getElementById('vendor-address');
-                if (addrEl) {
-                    addrEl.textContent = shortAddr;
-                    addrEl.title = address;
-                }
-                
-                registerCoinNotify();
-                
-                setTimeout(() => {
-                    console.log('Initial coin check...');
-                    checkForNewCoins();
-                }, 2000);
-                
-                if (pollingInterval) {
-                    clearInterval(pollingInterval);
-                }
-                pollingInterval = setInterval(() => {
-                    checkForNewCoins();
-                }, 30000);
-            }
-        });
-        
         setupEventListeners();
+        
+        initInbox();
         
     } else if (msg.event === 'NOTIFYCOIN') {
         console.log('NOTIFYCOIN event received!:', JSON.stringify(msg.data));
@@ -472,7 +497,13 @@ MDS.init(async (msg) => {
         console.log('New block - checking for coins...');
         checkForNewCoins();
     } else if (msg.event === 'MDS_TIMER_10SECONDS') {
-        console.log('10 second timer - checking for coins...');
-        checkForNewCoins();
+        if (myAddress) {
+            checkForNewCoins();
+        }
+    } else if (msg.event === 'MDS_TIMER_60SECONDS') {
+        if (!myAddress) {
+            console.log('Still no address, reinitializing...');
+            initInbox();
+        }
     }
 });
