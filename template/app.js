@@ -4,6 +4,7 @@ const TOKEN_IDS = {
 };
 
 const PRICE_STORAGE_KEY = 'minima_last_price';
+const MESSAGES_STORAGE_KEY = 'mishop_messages';
 const DEFAULT_MINIMA_PRICE = 0.004;
 
 const OBFUSCATED_CMC_KEY = '';
@@ -19,14 +20,16 @@ let mxToUsdRate = 0;
 let vendorAddress = null;
 let vendorPublicKey = null;
 let lastOrderReference = null;
+let isVendorMode = false;
+let buyerAddress = null;
+let buyerPublicKey = null;
+let currentMessages = [];
 
 const SHIPPING_RATES = {
     uk: 5,
     intl: 20,
     digital: 0
 };
-
-const CHAINMAIL_ADDRESS = "0x434841494E4D41494C";
 
 function decodeObfuscated(str, salt) {
     const decoded = atob(str);
@@ -58,43 +61,185 @@ function getDecodedPublicKey() {
     return null;
 }
 
-function sendOrderViaChainMail(orderDetails, publicKey, callback) {
-    console.log('=== sendOrderViaChainMail START ===');
+function textToHex(text) {
+    let hex = '';
+    for (let i = 0; i < text.length; i++) {
+        hex += text.charCodeAt(i).toString(16).padStart(2, '0');
+    }
+    return hex;
+}
+
+function hexToText(hex) {
+    let text = '';
+    for (let i = 0; i < hex.length; i += 2) {
+        text += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+    }
+    return text;
+}
+
+function encryptMessage(publicKey, data) {
+    return new Promise((resolve) => {
+        const jsonStr = JSON.stringify(data);
+        const hexData = textToHex(jsonStr);
+        
+        MDS.cmd('maxmessage action:encrypt publickey:' + publicKey + ' data:' + hexData, (response) => {
+            console.log('Encrypt response:', JSON.stringify(response));
+            if (response.status && response.response && response.response.data) {
+                resolve(response.response.data);
+            } else {
+                resolve(null);
+            }
+        });
+    });
+}
+
+function decryptMessage(encryptedData) {
+    return new Promise((resolve) => {
+        MDS.cmd('maxmessage action:decrypt data:' + encryptedData, (response) => {
+            console.log('Decrypt response:', JSON.stringify(response));
+            if (response.status && response.response && response.response.data) {
+                try {
+                    const hexData = response.response.data;
+                    const jsonStr = hexToText(hexData);
+                    const data = JSON.parse(jsonStr);
+                    resolve(data);
+                } catch (e) {
+                    console.error('Failed to parse decrypted data:', e);
+                    resolve(null);
+                }
+            } else {
+                resolve(null);
+            }
+        });
+    });
+}
+
+function saveMessages(messages) {
+    const data = JSON.stringify(messages);
+    if (typeof MDS !== 'undefined') {
+        MDS.file.save(MESSAGES_STORAGE_KEY, data);
+    } else {
+        localStorage.setItem(MESSAGES_STORAGE_KEY, data);
+    }
+}
+
+function loadMessages() {
+    return new Promise((resolve) => {
+        if (typeof MDS !== 'undefined') {
+            MDS.file.load(MESSAGES_STORAGE_KEY, (response) => {
+                if (response.status && response.response) {
+                    try {
+                        resolve(JSON.parse(response.response));
+                    } catch (e) {
+                        resolve([]);
+                    }
+                } else {
+                    resolve([]);
+                }
+            });
+        } else {
+            const data = localStorage.getItem(MESSAGES_STORAGE_KEY);
+            resolve(data ? JSON.parse(data) : []);
+        }
+    });
+}
+
+function addMessage(message) {
+    currentMessages.unshift(message);
+    saveMessages(currentMessages);
+    renderInbox();
+    if (typeof MDS !== 'undefined') {
+        MDS.notify('New message: ' + (message.subject || 'Order'));
+    }
+}
+
+async function sendEncryptedOrder(orderDetails, callback) {
+    console.log('=== sendEncryptedOrder START ===');
     
-    if (!publicKey) {
-        callback(false, "Public key not available");
+    if (!vendorPublicKey) {
+        callback(false, "Vendor public key not available");
         return;
     }
     
-    // Compose ChainMail message format
-    var chainMailMessage = {
-        type: "SEND",
-        topublickey: publicKey,
-        fromname: "miniShop",
-        subject: "Order: " + orderDetails.ref,
-        message: JSON.stringify({
-            ref: orderDetails.ref,
-            product: orderDetails.product,
-            size: orderDetails.size,
-            amount: orderDetails.amount,
-            currency: orderDetails.currency,
-            delivery: orderDetails.delivery,
-            shipping: orderDetails.shipping,
-            timestamp: orderDetails.timestamp
-        })
-    };
-    
-    console.log('Sending via MDS.comms.broadcast');
-    
-    // Send via MDS.comms.broadcast to all MiniDapps (including ChainMail)
-    var msgStr = JSON.stringify(chainMailMessage);
-    MDS.comms.broadcast(msgStr, function(success) {
-        if (success) {
-            console.log('=== MDS.comms.broadcast SUCCESS ===');
-            callback(true, { sent: true });
+    try {
+        const encrypted = await encryptMessage(vendorPublicKey, orderDetails);
+        if (!encrypted) {
+            console.error('Encryption failed');
+            callback(false, "Encryption failed");
+            return;
+        }
+        
+        console.log('Message encrypted successfully');
+        
+        const state = {};
+        state[99] = encrypted;
+        
+        const command = 'send address:' + vendorAddress + ' amount:0.0001 tokenid:' + TOKEN_IDS.MINIMA + ' state:' + JSON.stringify(state);
+        console.log('Sending encrypted message via TX:', command);
+        
+        MDS.cmd(command, (response) => {
+            console.log('TX Response:', JSON.stringify(response));
+            if (response && response.status) {
+                callback(true, { txid: response.response?.txnid || 'confirmed' });
+            } else {
+                callback(false, response?.error || 'Transaction failed');
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error sending encrypted order:', error);
+        callback(false, error.message);
+    }
+}
+
+function getMyPublicKey(callback) {
+    MDS.cmd('maxmessage action:publickey', (response) => {
+        if (response.status && response.response && response.response.publickey) {
+            callback(response.response.publickey);
         } else {
-            console.log('=== MDS.comms.broadcast FAILED ===');
-            callback(false, "Failed to send via ChainMail");
+            callback(null);
+        }
+    });
+}
+
+function getMyAddress(callback) {
+    MDS.cmd('address', (response) => {
+        if (response.status && response.response && response.response.address) {
+            callback(response.response.address);
+        } else {
+            callback(null);
+        }
+    });
+}
+
+function processIncomingMessage(coin) {
+    if (!coin.state || !coin.state[99]) return;
+    
+    console.log('Processing incoming message...');
+    
+    decryptMessage(coin.state[99]).then((decrypted) => {
+        if (decrypted) {
+            console.log('Decrypted message:', JSON.stringify(decrypted));
+            
+            const message = {
+                id: Date.now().toString(),
+                ref: decrypted.ref || '',
+                type: decrypted.type || 'ORDER',
+                product: decrypted.product || '',
+                size: decrypted.size || '',
+                amount: decrypted.amount || '',
+                currency: decrypted.currency || '',
+                delivery: decrypted.delivery || '',
+                shipping: decrypted.shipping || '',
+                timestamp: decrypted.timestamp || Date.now(),
+                txid: coin.txid || '',
+                read: false,
+                direction: 'received'
+            };
+            
+            addMessage(message);
+        } else {
+            console.log('Could not decrypt message (might not be for us)');
         }
     });
 }
@@ -647,10 +792,10 @@ async function processPayment() {
             timestamp: Date.now()
         };
         
-        console.log('Sending order via ChainMail:', JSON.stringify(messagePayload));
-        showPaymentStatus('Sending order via ChainMail...', 'pending');
+        console.log('Sending encrypted order:', JSON.stringify(messagePayload));
+        showPaymentStatus('Sending encrypted order...', 'pending');
         
-        sendOrderViaChainMail(messagePayload, vendorPublicKey, (msgSuccess, msgResponse) => {
+        sendEncryptedOrder(messagePayload, async (msgSuccess, msgResponse) => {
             if (!msgSuccess) {
                 showPaymentStatus('Failed to send order: ' + msgResponse, 'error');
                 payBtn.disabled = false;
@@ -658,7 +803,24 @@ async function processPayment() {
                 return;
             }
             
-            console.log('Order sent via ChainMail:', JSON.stringify(msgResponse));
+            console.log('Encrypted order sent:', JSON.stringify(msgResponse));
+            
+            addMessage({
+                id: Date.now().toString(),
+                ref: lastOrderReference,
+                type: 'ORDER',
+                product: PRODUCT.name,
+                size: sizeLabel,
+                amount: totalPrice.toFixed(2),
+                currency: tokenName,
+                delivery: deliveryInfo,
+                shipping: selectedShipping,
+                timestamp: Date.now(),
+                txid: msgResponse.txid,
+                read: true,
+                direction: 'sent'
+            });
+            
             showPaymentStatus('Sending payment...', 'pending');
             
             let command;
@@ -685,7 +847,7 @@ async function processPayment() {
                     }, 3000);
                 } else {
                     const errorMsg = response?.error || 'Payment may have failed';
-                    showPaymentStatus(errorMsg + ' (but order was sent via ChainMail)', 'error');
+                    showPaymentStatus(errorMsg + ' (but order was encrypted and sent)', 'error');
                     payBtn.disabled = false;
                     payBtn.querySelector('.btn-text').textContent = '💸 Pay Now';
                 }
@@ -737,12 +899,12 @@ function validateVendorAddress() {
             vendorPublicKey = getDecodedPublicKey();
             
             if (!vendorPublicKey) {
-                console.error('Missing or invalid ChainMail public key in config');
+                console.error('Missing or invalid vendor public key in config');
                 document.querySelector('.main-content').innerHTML = `
                     <div class="product-card" style="text-align: center; padding: 3rem;">
                         <h2 style="color: #c62828;">⚠️ Configuration Error</h2>
                         <p style="color: #333; margin-top: 1rem;">
-                            ChainMail public key is missing or invalid.<br>
+                            Vendor public key is missing or invalid.<br>
                             Please regenerate your MiniDapp with a valid config.
                         </p>
                     </div>
@@ -768,26 +930,344 @@ function validateVendorAddress() {
     return false;
 }
 
+let currentView = 'shop';
+let selectedMessage = null;
+
+function renderShop() {
+    const mainContent = document.querySelector('.main-content');
+    mainContent.innerHTML = `
+        <div class="product-card">
+            <div class="product-image-container">
+                <img id="product-image" src="item.jpg" alt="Product" class="product-image">
+                <div class="product-badge">Fresh</div>
+            </div>
+            
+            <div class="product-info">
+                <h2 id="product-name" class="product-name">Loading...</h2>
+                <p id="product-description" class="product-description">Loading product details...</p>
+                
+                <div class="price-display">
+                    <div class="price-usd">
+                        <span class="price-label">Price (MXUSDT)</span>
+                        <span id="price-usd-value" class="price-value">$0.00</span>
+                    </div>
+                    <div class="price-crypto">
+                        <span class="price-label">in Minima</span>
+                        <span id="price-minima" class="price-value crypto">-- Minima</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="size-selector" id="size-selector">
+                <h3 id="selector-title">Choose Your Size</h3>
+                <div class="size-options">
+                    <button class="size-btn" data-size="full">
+                        <span class="size-name">Full</span>
+                        <span class="size-weight">28g</span>
+                        <span class="size-percent">100%</span>
+                    </button>
+                    <button class="size-btn" data-size="half">
+                        <span class="size-name">Half</span>
+                        <span class="size-weight">14g</span>
+                        <span class="size-percent">50%</span>
+                    </button>
+                    <button class="size-btn" data-size="quarter">
+                        <span class="size-name">Quarter</span>
+                        <span class="size-weight">7g</span>
+                        <span class="size-percent">25%</span>
+                    </button>
+                    <button class="size-btn active" data-size="eighth">
+                        <span class="size-name">Eighth</span>
+                        <span class="size-weight">3.5g</span>
+                        <span class="size-percent">12.5%</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="quantity-selector hidden" id="quantity-selector">
+                <h3>Choose Quantity</h3>
+                <div class="quantity-input">
+                    <button class="qty-btn qty-minus" id="qty-minus">−</button>
+                    <input type="number" id="quantity-input" value="1" min="1" max="10">
+                    <button class="qty-btn qty-plus" id="qty-plus">+</button>
+                </div>
+                <p class="quantity-label"><span id="quantity-display">1</span> unit(s)</p>
+            </div>
+
+            <button id="buy-btn" class="buy-button">
+                <span class="btn-text">🛒 Buy Now</span>
+                <span class="btn-price">$0.00</span>
+            </button>
+
+            <div id="loading-indicator" class="loading hidden">
+                <div class="spinner"></div>
+                <span>Loading price...</span>
+            </div>
+        </div>
+    `;
+}
+
+function renderInbox() {
+    const mainContent = document.querySelector('.main-content');
+    const inboxMessages = currentMessages.filter(m => m.direction === 'received');
+    const sentMessages = currentMessages.filter(m => m.direction === 'sent');
+    
+    const unreadCount = inboxMessages.filter(m => !m.read).length;
+    
+    mainContent.innerHTML = `
+        <div class="inbox-container">
+            <div class="inbox-tabs">
+                <button class="inbox-tab ${currentView === 'inbox' ? 'active' : ''}" data-view="inbox">
+                    📥 Inbox ${unreadCount > 0 ? `<span class="badge">${unreadCount}</span>` : ''}
+                </button>
+                <button class="inbox-tab ${currentView === 'sent' ? 'active' : ''}" data-view="sent">
+                    📤 Sent (${sentMessages.length})
+                </button>
+            </div>
+            
+            <div class="inbox-list" id="inbox-list">
+                ${currentView === 'inbox' ? renderMessageList(inboxMessages, 'received') : renderMessageList(sentMessages, 'sent')}
+            </div>
+            
+            <div class="inbox-detail hidden" id="inbox-detail">
+                ${selectedMessage ? renderMessageDetail(selectedMessage) : ''}
+            </div>
+        </div>
+    `;
+    
+    setupInboxEventListeners();
+}
+
+function renderMessageList(messages, type) {
+    if (messages.length === 0) {
+        return `
+            <div class="empty-inbox">
+                <p>📭 No ${type} messages</p>
+            </div>
+        `;
+    }
+    
+    return messages.map(msg => `
+        <div class="message-item ${msg.direction === 'received' && !msg.read ? 'unread' : ''}" data-id="${msg.id}">
+            <div class="message-icon">${msg.direction === 'received' ? '📨' : '📤'}</div>
+            <div class="message-preview">
+                <div class="message-subject">${msg.subject || msg.product || 'Order: ' + msg.ref}</div>
+                <div class="message-meta">
+                    <span class="message-ref">${msg.ref}</span>
+                    <span class="message-amount">$${msg.amount} ${msg.currency}</span>
+                </div>
+            </div>
+            <div class="message-time">${formatTime(msg.timestamp)}</div>
+        </div>
+    `).join('');
+}
+
+function renderMessageDetail(msg) {
+    const isReceived = msg.direction === 'received';
+    return `
+        <button class="back-btn" id="back-to-list">← Back</button>
+        <div class="message-header">
+            <h3>${msg.subject || msg.product || 'Order: ' + msg.ref}</h3>
+            <span class="message-direction">${isReceived ? '📥 Received' : '📤 Sent'}</span>
+        </div>
+        
+        <div class="message-info">
+            <div class="info-row">
+                <span class="info-label">Order Ref:</span>
+                <span class="info-value">${msg.ref}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Product:</span>
+                <span class="info-value">${msg.product}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Size:</span>
+                <span class="info-value">${msg.size}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Amount:</span>
+                <span class="info-value">$${msg.amount} ${msg.currency}</span>
+            </div>
+            ${isReceived ? `
+            <div class="info-row">
+                <span class="info-label">Delivery:</span>
+                <span class="info-value delivery-address">${msg.delivery}</span>
+            </div>
+            ` : ''}
+            <div class="info-row">
+                <span class="info-label">Shipping:</span>
+                <span class="info-value">${getShippingLabel(msg.shipping)}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Time:</span>
+                <span class="info-value">${new Date(msg.timestamp).toLocaleString()}</span>
+            </div>
+            ${msg.txid ? `
+            <div class="info-row">
+                <span class="info-label">TX ID:</span>
+                <span class="info-value txid">${msg.txid.substring(0, 20)}...</span>
+            </div>
+            ` : ''}
+        </div>
+        
+        ${isReceived ? `
+        <div class="message-actions">
+            <button class="action-btn copy-address" data-address="${msg.delivery}">📋 Copy Address</button>
+        </div>
+        ` : ''}
+    `;
+}
+
+function setupInboxEventListeners() {
+    document.querySelectorAll('.inbox-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            currentView = tab.dataset.view;
+            selectedMessage = null;
+            document.getElementById('inbox-detail').classList.add('hidden');
+            document.getElementById('inbox-list').classList.remove('hidden');
+            renderInbox();
+        });
+    });
+    
+    document.querySelectorAll('.message-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const msgId = item.dataset.id;
+            selectedMessage = currentMessages.find(m => m.id === msgId);
+            if (selectedMessage && selectedMessage.direction === 'received' && !selectedMessage.read) {
+                selectedMessage.read = true;
+                saveMessages(currentMessages);
+            }
+            document.getElementById('inbox-list').classList.add('hidden');
+            document.getElementById('inbox-detail').classList.remove('hidden');
+            document.getElementById('inbox-detail').innerHTML = renderMessageDetail(selectedMessage);
+            setupDetailEventListeners();
+        });
+    });
+}
+
+function setupDetailEventListeners() {
+    const backBtn = document.getElementById('back-to-list');
+    if (backBtn) {
+        backBtn.addEventListener('click', () => {
+            selectedMessage = null;
+            document.getElementById('inbox-detail').classList.add('hidden');
+            document.getElementById('inbox-list').classList.remove('hidden');
+        });
+    }
+    
+    document.querySelectorAll('.copy-address').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const address = btn.dataset.address;
+            navigator.clipboard.writeText(address).then(() => {
+                btn.textContent = '✓ Copied!';
+                setTimeout(() => {
+                    btn.textContent = '📋 Copy Address';
+                }, 2000);
+            });
+        });
+    });
+}
+
+function formatTime(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now - date;
+    
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+    if (diff < 604800000) return Math.floor(diff / 86400000) + 'd ago';
+    
+    return date.toLocaleDateString();
+}
+
+function getShippingLabel(shipping) {
+    const labels = {
+        'uk': '🇬🇧 UK Domestic ($5)',
+        'intl': '🌍 International ($20)',
+        'digital': '📧 Electronic Delivery (Free)'
+    };
+    return labels[shipping] || shipping;
+}
+
+function switchView(view) {
+    currentView = view;
+    
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === view);
+    });
+    
+    if (view === 'shop') {
+        renderShop();
+        initApp();
+    } else {
+        renderInbox();
+    }
+}
+
+function setupNavigation() {
+    const header = document.querySelector('.header');
+    header.innerHTML = `
+        <div class="logo">
+            <span class="logo-icon">🛒</span>
+            <h1>miShop</h1>
+        </div>
+        <nav class="nav-tabs">
+            <button class="nav-btn active" data-view="shop">🛍️ Shop</button>
+            <button class="nav-btn" data-view="inbox" id="nav-inbox">📬 Inbox</button>
+        </nav>
+        <div class="header-decoration">
+            <svg class="peace-sign" viewBox="0 0 100 100" width="40" height="40">
+                <circle cx="50" cy="50" r="45" fill="none" stroke="#FFD700" stroke-width="4"/>
+                <line x1="50" y1="5" x2="50" y2="50" stroke="#FFD700" stroke-width="4"/>
+                <line x1="50" y1="50" x2="85" y2="75" stroke="#FFD700" stroke-width="4"/>
+                <line x1="50" y1="50" x2="15" y2="75" stroke="#FFD700" stroke-width="4"/>
+                <circle cx="50" cy="50" r="20" fill="#FFD700"/>
+                <circle cx="50" cy="50" r="12" fill="#2D5016"/>
+            </svg>
+        </div>
+    `;
+    
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchView(btn.dataset.view));
+    });
+}
+
 MDS.init(async (msg) => {
     console.log('MDS event:', msg.event);
     
     if (msg.event === 'inited') {
-        console.log('MDS initialized, validating vendor...');
+        console.log('MDS initialized');
+        
+        if (typeof MDS !== 'undefined') {
+            MDS.cmd('coinnotify action:add address:' + vendorAddress, function(resp) {
+                console.log('Coin notify registered:', resp);
+            });
+        }
+        
+        currentMessages = await loadMessages();
+        
         if (!validateVendorAddress()) return;
         
-        console.log('Vendor valid, initializing app...');
+        setupNavigation();
+        renderShop();
         initApp();
         
         const loadingIndicator = document.getElementById('loading-indicator');
-        loadingIndicator.classList.remove('hidden');
+        if (loadingIndicator) loadingIndicator.classList.remove('hidden');
         
         console.log('Fetching price...');
         mxToUsdRate = await fetchMXPrice();
         console.log('Got price:', mxToUsdRate);
         
-        loadingIndicator.classList.add('hidden');
+        if (loadingIndicator) loadingIndicator.classList.add('hidden');
         updatePrices();
         
+    } else if (msg.event === 'NOTIFYCOIN') {
+        console.log('NOTIFYCOIN event:', JSON.stringify(msg.data));
+        if (msg.data && msg.data.address === vendorAddress) {
+            processIncomingMessage(msg.data.coin);
+        }
     } else if (msg.event === 'NEWBLOCK') {
         mxToUsdRate = await fetchMXPrice();
         updatePrices();
