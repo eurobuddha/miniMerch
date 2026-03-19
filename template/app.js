@@ -472,6 +472,7 @@ function updatePayButton() {
 
 async function processPayment() {
     const postalAddress = document.getElementById('postal-address').value.trim();
+    const emailAddress = document.getElementById('email-address').value.trim();
     const isUnitsMode = PRODUCT.mode === 'units';
     let productPrice;
     
@@ -484,9 +485,19 @@ async function processPayment() {
     
     const totalPrice = productPrice + shippingFee;
     
-    if (postalAddress.length < 10) {
-        showPaymentStatus('Please enter a complete postal address', 'error');
-        return;
+    let deliveryInfo;
+    if (selectedShipping === 'digital') {
+        if (!emailAddress.includes('@')) {
+            showPaymentStatus('Please enter a valid email address', 'error');
+            return;
+        }
+        deliveryInfo = emailAddress;
+    } else {
+        if (postalAddress.length < 10) {
+            showPaymentStatus('Please enter a complete postal address', 'error');
+            return;
+        }
+        deliveryInfo = postalAddress;
     }
     
     const payBtn = document.getElementById('pay-btn');
@@ -507,7 +518,7 @@ async function processPayment() {
         
         payBtn.querySelector('.btn-text').textContent = `Pay ${totalPrice.toFixed(2)} USD`;
         
-        const cleanAddress = postalAddress
+        const cleanAddress = deliveryInfo
             .replace(/\n/g, ', ')
             .replace(/"/g, "'")
             .replace(/\\/g, '')
