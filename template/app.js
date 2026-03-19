@@ -324,6 +324,7 @@ function setupEventListeners() {
             btn.classList.add('active');
             updateAddressField();
             updatePrices();
+            updateCheckoutSummary();
         });
     });
     
@@ -405,6 +406,43 @@ function openCheckoutModal() {
     updatePayButton();
     
     modal.classList.remove('hidden');
+}
+
+function updateCheckoutSummary() {
+    const modal = document.getElementById('modal');
+    if (modal.classList.contains('hidden')) return;
+    
+    const isUnitsMode = PRODUCT.mode === 'units';
+    let productPrice;
+    
+    if (isUnitsMode) {
+        productPrice = PRODUCT.pricePerUnit * selectedQuantity;
+    } else {
+        const size = PRODUCT.sizes.find(s => s.id === selectedSize);
+        productPrice = PRODUCT.pricePerGram * size.weight;
+    }
+    
+    const subtotal = productPrice;
+    const totalPrice = productPrice + shippingFee;
+    const minimaTotal = totalPrice / mxToUsdRate * 1.10;
+    
+    const summaryShipping = document.getElementById('summary-shipping');
+    const summarySubtotal = document.getElementById('summary-subtotal');
+    const summaryUsd = document.getElementById('summary-usd');
+    const summaryMinima = document.getElementById('summary-minima');
+    const payAmount = document.getElementById('pay-amount');
+    
+    summaryShipping.textContent = `$${shippingFee.toFixed(2)} USDT`;
+    summarySubtotal.textContent = `${totalPrice.toFixed(2)} USDT`;
+    summaryUsd.textContent = `$${totalPrice.toFixed(2)} USDT`;
+    
+    if (mxToUsdRate > 0 && mxToUsdRate !== 1) {
+        summaryMinima.innerHTML = `${minimaTotal.toFixed(4)} Minima<br><span class="slippage-note">(+10% slippage)</span>`;
+        payAmount.textContent = `${totalPrice.toFixed(2)} USD = ${minimaTotal.toFixed(4)} Minima`;
+    } else if (mxToUsdRate === 1) {
+        summaryMinima.textContent = `${totalPrice.toFixed(4)} Minima (price unavailable)`;
+        payAmount.textContent = `${totalPrice.toFixed(2)} USD`;
+    }
 }
 
 function closeModal() {
