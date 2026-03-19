@@ -68,10 +68,35 @@
                 <button class="action-btn" id="copy-address-btn">📋 Copy Delivery Address</button>
                 <button class="action-btn secondary" id="mark-read-btn">✓ Mark as Read</button>
             </div>
+            <div class="reply-action" id="reply-action" style="display: none;">
+                <button class="action-btn reply-btn" id="reply-btn">↩️ Reply to Buyer</button>
+                <p class="reply-warning" id="reply-warning" style="display: none; color: #c62828; font-size: 0.8rem; margin-top: 0.5rem;">⚠️ Buyer contact info missing - cannot reply</p>
+            </div>
             
             <div class="message-tx">
                 <span class="tx-label">TX ID:</span>
                 <span class="tx-id" id="modal-txid">-</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="reply-modal" class="modal hidden">
+        <div class="modal-content reply-modal-content">
+            <button class="modal-close" id="reply-modal-close">&times;</button>
+            
+            <div class="message-header">
+                <h2>Reply to Buyer</h2>
+                <span class="message-direction" id="reply-to-address">-</span>
+            </div>
+            
+            <div class="reply-form">
+                <p class="reply-order-ref">Order: <span id="reply-order-ref">-</span></p>
+                <textarea id="reply-message" placeholder="Type your reply message..." rows="6"></textarea>
+                <div class="reply-status" id="reply-status"></div>
+            </div>
+            
+            <div class="message-actions">
+                <button class="action-btn" id="send-reply-btn">📤 Send Reply</button>
             </div>
         </div>
     </div>

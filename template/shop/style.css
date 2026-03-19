@@ -964,6 +964,11 @@ body {
     border-left: 4px solid var(--yellow);
 }
 
+.message-item.buyer-reply {
+    background: rgba(155, 89, 182, 0.15);
+    border-left: 4px solid var(--purple);
+}
+
 .message-icon {
     font-size: 1.5rem;
 }
@@ -1096,6 +1101,136 @@ body {
 
 .action-btn:hover {
     background: var(--bright-orange);
+}
+
+.message-type {
+    color: var(--purple);
+    font-weight: 700;
+    font-size: 0.75rem;
+}
+
+.reply-content {
+    background: rgba(155, 89, 182, 0.1);
+    border-radius: 12px;
+    padding: 1rem;
+    margin-top: 1rem;
+    border: 2px solid var(--purple);
+}
+
+.reply-content h4 {
+    color: var(--purple);
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.reply-message {
+    color: var(--dark);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: rgba(255,255,255,0.5);
+    padding: 0.75rem;
+    border-radius: 8px;
+}
+
+.reply-actions {
+    margin-top: 1rem;
+    text-align: center;
+}
+
+.reply-to-vendor-btn {
+    background: linear-gradient(135deg, var(--purple) 0%, var(--bright-orange) 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 25px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(155, 89, 182, 0.4);
+}
+
+.reply-to-vendor-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(155, 89, 182, 0.6);
+}
+
+.reply-warning {
+    background: rgba(255, 107, 53, 0.2);
+    border: 2px solid var(--orange);
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin-top: 1rem;
+    text-align: center;
+    color: var(--orange);
+}
+
+.reply-modal textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid var(--purple);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 1rem;
+    resize: vertical;
+    min-height: 120px;
+    background: rgba(255,255,255,0.9);
+    color: var(--dark);
+    margin-top: 1rem;
+}
+
+.reply-modal textarea:focus {
+    outline: none;
+    border-color: var(--bright-orange);
+    box-shadow: 0 0 0 3px rgba(155, 89, 182, 0.3);
+}
+
+.send-reply-btn {
+    background: linear-gradient(135deg, var(--purple) 0%, var(--bright-orange) 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 2rem;
+    border-radius: 25px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-top: 1rem;
+    width: 100%;
+}
+
+.send-reply-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(155, 89, 182, 0.6);
+}
+
+.send-reply-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.reply-status {
+    text-align: center;
+    padding: 0.5rem;
+    margin-top: 0.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+.reply-status.pending {
+    background: rgba(255, 215, 0, 0.2);
+    color: var(--yellow);
+}
+
+.reply-status.success {
+    background: rgba(76, 175, 80, 0.2);
+    color: var(--bright-green);
+}
+
+.reply-status.error {
+    background: rgba(255, 107, 53, 0.2);
+    color: var(--orange);
 }
 
 @media (max-width: 480px) {

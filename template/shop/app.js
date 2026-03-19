@@ -24,6 +24,8 @@ let isVendorMode = false;
 let buyerAddress = null;
 let buyerPublicKey = null;
 let currentMessages = [];
+let buyerInboxAddress = null;
+let replyPollingInterval = null;
 
 const SHIPPING_RATES = {
     uk: 5,
@@ -33,7 +35,6 @@ const SHIPPING_RATES = {
 
 function decodeObfuscated(str, salt) {
     const decoded = atob(str);
-    const combined = decoded.substring(0, decoded.length - salt.length);
     const obfuscated = decoded.substring(0, decoded.length - salt.length);
     return obfuscated.split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ salt.charCodeAt(i % salt.length))).join('');
 }
@@ -77,31 +78,24 @@ function hexToText(hex) {
     return text;
 }
 
-function encryptMessage(publicKey, data) {
-    return new Promise((resolve) => {
-        const jsonStr = JSON.stringify(data);
-        const hexData = textToHex(jsonStr);
-        
-        MDS.cmd('maxmessage action:encrypt publickey:' + publicKey + ' data:' + hexData, (response) => {
-            console.log('Encrypt response:', JSON.stringify(response));
-            if (response.status && response.response && response.response.data) {
-                resolve(response.response.data);
-            } else {
-                resolve(null);
-            }
-        });
-    });
-}
-
 function decryptMessage(encryptedData) {
     return new Promise((resolve) => {
-        MDS.cmd('maxmessage action:decrypt data:' + encryptedData, (response) => {
+        let cleanData = encryptedData;
+        if (cleanData.startsWith('0x')) {
+            cleanData = cleanData.substring(2);
+        }
+        
+        MDS.cmd('maxmessage action:decrypt data:' + cleanData, (response) => {
             console.log('Decrypt response:', JSON.stringify(response));
-            if (response.status && response.response && response.response.data) {
+            if (response.status && response.response && response.response.message && response.response.message.data) {
                 try {
-                    const hexData = response.response.data;
+                    let hexData = response.response.message.data;
+                    if (hexData.startsWith('0x')) {
+                        hexData = hexData.substring(2);
+                    }
                     const jsonStr = hexToText(hexData);
                     const data = JSON.parse(jsonStr);
+                    data._senderPublicKey = response.response.message?.mxpublickey || null;
                     resolve(data);
                 } catch (e) {
                     console.error('Failed to parse decrypted data:', e);
@@ -112,6 +106,30 @@ function decryptMessage(encryptedData) {
             }
         });
     });
+}
+
+function getState99Data(state) {
+    if (!state) return null;
+    
+    if (Array.isArray(state)) {
+        for (const entry of state) {
+            if (entry && entry.port === 99 && entry.data) {
+                return entry.data;
+            }
+        }
+        return null;
+    }
+    
+    if (typeof state === 'object') {
+        if (state[99]) return state[99];
+        for (const key in state) {
+            if (state[key] && typeof state[key] === 'object' && state[key].port === 99) {
+                return state[key].data;
+            }
+        }
+    }
+    
+    return null;
 }
 
 function saveMessages(messages) {
@@ -153,26 +171,48 @@ function addMessage(message) {
     }
 }
 
+async function encryptMessage(publicKey, data) {
+    return new Promise((resolve) => {
+        const jsonStr = JSON.stringify(data);
+        const hexData = textToHex(jsonStr);
+        
+        MDS.cmd('maxmessage action:encrypt publickey:' + publicKey + ' data:' + hexData, (response) => {
+            console.log('Encrypt response:', JSON.stringify(response));
+            if (response.status && response.response && response.response.message && response.response.message.data) {
+                resolve({
+                    encrypted: response.response.data,
+                    buyerPublicKey: response.response.message.mxpublickey || '',
+                    buyerAddress: response.response.message.miniaddress || ''
+                });
+            } else {
+                resolve(null);
+            }
+        });
+    });
+}
+
 async function sendEncryptedOrder(orderDetails, callback) {
     console.log('=== sendEncryptedOrder START ===');
     
     if (!vendorPublicKey) {
-        callback(false, "Vendor public key not available");
+        callback(false, "Vendor public key not available", null);
         return;
     }
     
     try {
-        const encrypted = await encryptMessage(vendorPublicKey, orderDetails);
-        if (!encrypted) {
+        const encryptResult = await encryptMessage(vendorPublicKey, orderDetails);
+        if (!encryptResult || !encryptResult.encrypted) {
             console.error('Encryption failed');
-            callback(false, "Encryption failed");
+            callback(false, "Encryption failed", null);
             return;
         }
         
         console.log('Message encrypted successfully');
+        console.log('Buyer PublicKey from encrypt:', encryptResult.buyerPublicKey);
+        console.log('Buyer Address from encrypt:', encryptResult.buyerAddress);
         
         const state = {};
-        state[99] = encrypted;
+        state[99] = encryptResult.encrypted;
         
         const command = 'send address:' + vendorAddress + ' amount:0.0001 tokenid:' + TOKEN_IDS.MINIMA + ' state:' + JSON.stringify(state);
         console.log('Sending encrypted message via TX:', command);
@@ -180,44 +220,59 @@ async function sendEncryptedOrder(orderDetails, callback) {
         MDS.cmd(command, (response) => {
             console.log('TX Response:', JSON.stringify(response));
             if (response && response.status) {
-                callback(true, { txid: response.response?.txnid || 'confirmed' });
+                const buyerAddress = response.response?.body?.txn?.inputs?.[0]?.miniaddress || encryptResult.buyerAddress;
+                callback(true, { 
+                    txid: response.response?.txnid || 'confirmed',
+                    buyerPublicKey: encryptResult.buyerPublicKey,
+                    buyerAddress: buyerAddress
+                });
             } else {
-                callback(false, response?.error || 'Transaction failed');
+                callback(false, response?.error || 'Transaction failed', null);
             }
         });
         
     } catch (error) {
         console.error('Error sending encrypted order:', error);
-        callback(false, error.message);
+        callback(false, error.message, null);
     }
 }
 
-function getMyPublicKey(callback) {
-    MDS.cmd('maxmessage action:publickey', (response) => {
-        if (response.status && response.response && response.response.publickey) {
-            callback(response.response.publickey);
-        } else {
-            callback(null);
-        }
+function getMyPublicKey() {
+    return new Promise((resolve) => {
+        MDS.cmd('maxmessage action:publickey', (response) => {
+            console.log('getMyPublicKey response:', JSON.stringify(response));
+            if (response.status && response.response && response.response.publickey) {
+                resolve(response.response.publickey);
+            } else if (response.status && response.response && response.response.message && response.response.message.publickey) {
+                resolve(response.response.message.publickey);
+            } else {
+                resolve(null);
+            }
+        });
     });
 }
 
 function getMyAddress(callback) {
-    MDS.cmd('address', (response) => {
-        if (response.status && response.response && response.response.address) {
-            callback(response.response.address);
-        } else {
-            callback(null);
+    MDS.cmd('getaddress', (response) => {
+        console.log('getaddress response:', JSON.stringify(response));
+        if (response.status && response.response) {
+            const address = response.response.address || response.response.miniaddress || response.response;
+            if (address && address.startsWith('0x') || address && address.startsWith('Mx')) {
+                callback(address);
+                return;
+            }
         }
+        callback(null);
     });
 }
 
 function processIncomingMessage(coin) {
-    if (!coin.state || !coin.state[99]) return;
+    const stateData = getState99Data(coin.state);
+    if (!stateData) return;
     
     console.log('Processing incoming message...');
     
-    decryptMessage(coin.state[99]).then((decrypted) => {
+    decryptMessage(stateData).then((decrypted) => {
         if (decrypted) {
             console.log('Decrypted message:', JSON.stringify(decrypted));
             
@@ -242,6 +297,86 @@ function processIncomingMessage(coin) {
             console.log('Could not decrypt message (might not be for us)');
         }
     });
+}
+
+function processReplyMessage(coin) {
+    const stateData = getState99Data(coin.state);
+    if (!stateData) return;
+    
+    console.log('Processing reply message...');
+    
+    decryptMessage(stateData).then((decrypted) => {
+        if (decrypted) {
+            console.log('Decrypted reply:', JSON.stringify(decrypted));
+            
+            if (decrypted.type !== 'REPLY') {
+                console.log('Not a reply message, ignoring');
+                return;
+            }
+            
+            const message = {
+                id: Date.now().toString(),
+                ref: decrypted.ref || 'REPLY-' + Date.now(),
+                type: 'REPLY',
+                subject: 'Reply: ' + (decrypted.ref || 'Order'),
+                product: decrypted.originalOrder || '',
+                message: decrypted.message || '',
+                timestamp: decrypted.timestamp || Date.now(),
+                txid: coin.txid || '',
+                read: false,
+                direction: 'received',
+                vendorPublicKey: decrypted.vendorPublicKey || decrypted._senderPublicKey || null,
+                vendorAddress: decrypted.vendorAddress || null
+            };
+            
+            console.log('Vendor info for reply:', { publicKey: message.vendorPublicKey, address: message.vendorAddress });
+            
+            addMessage(message);
+            
+            if (typeof MDS !== 'undefined') {
+                MDS.notify('New reply: ' + (decrypted.ref || 'Order'));
+            }
+        } else {
+            console.log('Could not decrypt reply (might not be for us)');
+        }
+    });
+}
+
+function startReplyPolling() {
+    if (replyPollingInterval) {
+        clearInterval(replyPollingInterval);
+    }
+    
+    console.log('Starting reply polling for address:', buyerInboxAddress);
+    
+    replyPollingInterval = setInterval(() => {
+        if (!buyerInboxAddress) return;
+        
+        MDS.cmd('coins address:' + buyerInboxAddress, (response) => {
+            if (response.status && response.response) {
+                let coins = response.response;
+                if (typeof coins === 'string') {
+                    try {
+                        coins = JSON.parse(coins);
+                    } catch (e) {
+                        return;
+                    }
+                }
+                
+                if (Array.isArray(coins)) {
+                    for (const coin of coins) {
+                        if (getState99Data(coin.state)) {
+                            const exists = currentMessages.find(m => m.txid === (coin.txid || coin.coinid));
+                            if (!exists) {
+                                console.log('Found new reply via polling!');
+                                processReplyMessage(coin);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }, 15000);
 }
 
 async function saveLastPrice(price) {
@@ -789,13 +924,16 @@ async function processPayment() {
             currency: tokenName,
             delivery: deliveryInfo,
             shipping: selectedShipping,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            buyerPublicKey: '',
+            buyerAddress: ''
         };
         
-        console.log('Sending encrypted order:', JSON.stringify(messagePayload));
-        showPaymentStatus('Sending encrypted order...', 'pending');
+        showPaymentStatus('Encrypting order with buyer info...', 'pending');
+        console.log('=== SENDING ORDER ===');
         
         sendEncryptedOrder(messagePayload, async (msgSuccess, msgResponse) => {
+            
             if (!msgSuccess) {
                 showPaymentStatus('Failed to send order: ' + msgResponse, 'error');
                 payBtn.disabled = false;
@@ -804,54 +942,89 @@ async function processPayment() {
             }
             
             console.log('Encrypted order sent:', JSON.stringify(msgResponse));
-            
-            addMessage({
-                id: Date.now().toString(),
-                ref: lastOrderReference,
-                type: 'ORDER',
-                product: PRODUCT.name,
-                size: sizeLabel,
-                amount: totalPrice.toFixed(2),
-                currency: tokenName,
-                delivery: deliveryInfo,
-                shipping: selectedShipping,
-                timestamp: Date.now(),
-                txid: msgResponse.txid,
-                read: true,
-                direction: 'sent'
+            console.log('Buyer info in response:', {
+                publicKey: msgResponse?.buyerPublicKey,
+                address: msgResponse?.buyerAddress
             });
             
-            showPaymentStatus('Sending payment...', 'pending');
-            
-            let command;
-            if (selectedPaymentMethod === 'USDT') {
-                command = `send address:${vendorAddress} amount:${sendAmount.toFixed(8)} tokenid:${TOKEN_IDS.USDT}`;
+            if (msgResponse?.buyerPublicKey && msgResponse?.buyerAddress) {
+                console.log('Got buyer info, sending updated order with reply address...');
+                
+                const fullPayload = {
+                    ...messagePayload,
+                    buyerPublicKey: msgResponse.buyerPublicKey,
+                    buyerAddress: msgResponse.buyerAddress
+                };
+                
+                showPaymentStatus('Sending order with reply address...', 'pending');
+                
+                sendEncryptedOrder(fullPayload, async (updateSuccess, updateResponse) => {
+                    if (!updateSuccess) {
+                        showPaymentStatus('Failed to send reply address: ' + updateResponse, 'error');
+                        payBtn.disabled = false;
+                        payBtn.querySelector('.btn-text').textContent = '💸 Pay Now';
+                        return;
+                    }
+                    
+                    proceedWithPayment(updateResponse?.txid || 'confirmed', updateResponse);
+                });
             } else {
-                command = `send address:${vendorAddress} amount:${sendAmount.toFixed(8)} tokenid:${TOKEN_IDS.MINIMA}`;
+                console.log('No buyer info available, proceeding without reply address');
+                proceedWithPayment(msgResponse?.txid || 'confirmed', msgResponse);
             }
             
-            console.log('Payment command:', command);
-            
-            MDS.cmd(command, (response) => {
-                console.log('MDS Payment Response:', JSON.stringify(response));
+            function proceedWithPayment(orderTxid, buyerInfoResponse) {
+                const storedBuyerInfo = buyerInfoResponse || msgResponse || {};
+                addMessage({
+                    id: Date.now().toString(),
+                    ref: lastOrderReference,
+                    type: 'ORDER',
+                    product: PRODUCT.name,
+                    size: sizeLabel,
+                    amount: totalPrice.toFixed(2),
+                    currency: tokenName,
+                    delivery: deliveryInfo,
+                    shipping: selectedShipping,
+                    timestamp: Date.now(),
+                    txid: orderTxid,
+                    read: true,
+                    direction: 'sent',
+                    buyerPublicKey: storedBuyerInfo?.buyerPublicKey || '',
+                    buyerAddress: storedBuyerInfo?.buyerAddress || ''
+                });
                 
-                if (response && response.status) {
-                    const txid = response.response?.txnid || response.response?.tx?.pow || 'confirmed';
-                    payBtn.querySelector('.btn-text').textContent = '✓ Sent!';
-                    payBtn.classList.add('sent');
-                    showPaymentStatus('Transaction sent! TX: ' + txid.substring(0, 20) + '...', 'success');
-                    
-                    setTimeout(() => {
-                        closeModal();
-                        showConfirmation(txid, lastOrderReference);
-                    }, 3000);
+                showPaymentStatus('Sending payment...', 'pending');
+                
+                let command;
+                if (selectedPaymentMethod === 'USDT') {
+                    command = `send address:${vendorAddress} amount:${sendAmount.toFixed(8)} tokenid:${TOKEN_IDS.USDT}`;
                 } else {
-                    const errorMsg = response?.error || 'Payment may have failed';
-                    showPaymentStatus(errorMsg + ' (but order was encrypted and sent)', 'error');
-                    payBtn.disabled = false;
-                    payBtn.querySelector('.btn-text').textContent = '💸 Pay Now';
+                    command = `send address:${vendorAddress} amount:${sendAmount.toFixed(8)} tokenid:${TOKEN_IDS.MINIMA}`;
                 }
-            });
+                
+                console.log('Payment command:', command);
+                
+                MDS.cmd(command, (response) => {
+                    console.log('MDS Payment Response:', JSON.stringify(response));
+                    
+                    if (response && response.status) {
+                        const txid = response.response?.txnid || response.response?.tx?.pow || 'confirmed';
+                        payBtn.querySelector('.btn-text').textContent = '✓ Sent!';
+                        payBtn.classList.add('sent');
+                        showPaymentStatus('Transaction sent! TX: ' + txid.substring(0, 20) + '...', 'success');
+                        
+                        setTimeout(() => {
+                            closeModal();
+                            showConfirmation(txid, lastOrderReference);
+                        }, 3000);
+                    } else {
+                        const errorMsg = response?.error || 'Payment may have failed';
+                        showPaymentStatus(errorMsg + ' (but order was encrypted and sent)', 'error');
+                        payBtn.disabled = false;
+                        payBtn.querySelector('.btn-text').textContent = '💸 Pay Now';
+                    }
+                });
+            }
         });
         
         setTimeout(() => {
@@ -1047,23 +1220,82 @@ function renderMessageList(messages, type) {
         `;
     }
     
-    return messages.map(msg => `
-        <div class="message-item ${msg.direction === 'received' && !msg.read ? 'unread' : ''}" data-id="${msg.id}">
-            <div class="message-icon">${msg.direction === 'received' ? '📨' : '📤'}</div>
+    return messages.map(msg => {
+        const isReply = msg.type === 'REPLY';
+        const isBuyerReply = msg.type === 'BUYER_REPLY';
+        const isSent = msg.direction === 'sent';
+        return `
+        <div class="message-item ${msg.direction === 'received' && !msg.read ? 'unread' : ''} ${isBuyerReply ? 'buyer-reply' : ''}" data-id="${msg.id}">
+            <div class="message-icon">${isBuyerReply ? '↩️' : (isReply ? '↩️' : (msg.direction === 'received' ? '📨' : '📤'))}</div>
             <div class="message-preview">
                 <div class="message-subject">${msg.subject || msg.product || 'Order: ' + msg.ref}</div>
                 <div class="message-meta">
                     <span class="message-ref">${msg.ref}</span>
-                    <span class="message-amount">$${msg.amount} ${msg.currency}</span>
+                    ${isBuyerReply ? '<span class="message-type">Your Reply</span>' : 
+                      (isReply ? '<span class="message-type">Vendor Reply</span>' : 
+                      (isSent ? '<span class="message-type">Sent</span>' : `<span class="message-amount">$${msg.amount} ${msg.currency}</span>`))}
                 </div>
             </div>
             <div class="message-time">${formatTime(msg.timestamp)}</div>
         </div>
-    `).join('');
+    `}).join('');
 }
 
 function renderMessageDetail(msg) {
     const isReceived = msg.direction === 'received';
+    const isReply = msg.type === 'REPLY';
+    const canReply = isReply && (msg.vendorPublicKey || msg.vendorAddress);
+    
+    if (isReply) {
+        return `
+            <button class="back-btn" id="back-to-list">← Back</button>
+            <div class="message-header">
+                <h3>↩️ Vendor Reply</h3>
+                <span class="message-direction">📥 Received</span>
+            </div>
+            
+            <div class="message-info">
+                <div class="info-row">
+                    <span class="info-label">Order Ref:</span>
+                    <span class="info-value">${msg.ref}</span>
+                </div>
+                ${msg.originalOrder ? `
+                <div class="info-row">
+                    <span class="info-label">Re:</span>
+                    <span class="info-value">${msg.originalOrder}</span>
+                </div>
+                ` : ''}
+                <div class="info-row">
+                    <span class="info-label">Time:</span>
+                    <span class="info-value">${new Date(msg.timestamp).toLocaleString()}</span>
+                </div>
+                ${msg.txid ? `
+                <div class="info-row">
+                    <span class="info-label">TX ID:</span>
+                    <span class="info-value txid">${msg.txid.substring(0, 20)}...</span>
+                </div>
+                ` : ''}
+            </div>
+            
+            <div class="reply-content">
+                <h4>Message:</h4>
+                <p class="reply-message">${msg.message}</p>
+            </div>
+            
+            ${canReply ? `
+            <div class="reply-actions">
+                <button class="reply-to-vendor-btn" id="reply-to-vendor-btn" data-id="${msg.id}">
+                    ↩️ Reply to Vendor
+                </button>
+            </div>
+            ` : `
+            <div class="reply-warning">
+                <p>⚠️ Cannot reply - missing vendor contact info</p>
+            </div>
+            `}
+        `;
+    }
+    
     return `
         <button class="back-btn" id="back-to-list">← Back</button>
         <div class="message-header">
@@ -1118,6 +1350,122 @@ function renderMessageDetail(msg) {
     `;
 }
 
+let buyerReplyTarget = null;
+
+function openBuyerReplyModal(msg) {
+    buyerReplyTarget = msg;
+    
+    document.getElementById('buyer-reply-ref').textContent = 'Re: ' + (msg.ref || 'Order');
+    document.getElementById('buyer-reply-message').value = '';
+    document.getElementById('buyer-reply-status').textContent = '';
+    document.getElementById('buyer-reply-status').className = 'reply-status';
+    document.getElementById('buyer-send-reply-btn').disabled = false;
+    document.getElementById('buyer-send-reply-btn').textContent = '📤 Send Reply';
+    
+    document.getElementById('buyer-reply-modal').classList.remove('hidden');
+}
+
+function closeBuyerReplyModal() {
+    document.getElementById('buyer-reply-modal').classList.add('hidden');
+    buyerReplyTarget = null;
+}
+
+async function sendBuyerReply() {
+    if (!buyerReplyTarget) return;
+    
+    const messageText = document.getElementById('buyer-reply-message').value.trim();
+    const statusEl = document.getElementById('buyer-reply-status');
+    const sendBtn = document.getElementById('buyer-send-reply-btn');
+    
+    if (!messageText) {
+        statusEl.textContent = 'Please enter a message';
+        statusEl.className = 'reply-status error';
+        return;
+    }
+    
+    const msg = buyerReplyTarget;
+    
+    if (!msg.vendorPublicKey) {
+        statusEl.textContent = 'Missing vendor public key';
+        statusEl.className = 'reply-status error';
+        return;
+    }
+    
+    statusEl.textContent = 'Encrypting reply...';
+    statusEl.className = 'reply-status pending';
+    sendBtn.disabled = true;
+    
+    try {
+        const replyPayload = {
+            type: 'BUYER_REPLY',
+            ref: msg.ref,
+            originalOrder: msg.product || msg.originalOrder || '',
+            message: messageText,
+            timestamp: Date.now(),
+            buyerPublicKey: buyerPublicKey || '',
+            buyerAddress: buyerAddress || ''
+        };
+        
+        console.log('Buyer sending reply payload:', replyPayload);
+        
+        const encrypted = await encryptMessage(msg.vendorPublicKey, replyPayload);
+        
+        if (!encrypted) {
+            throw new Error('Encryption failed');
+        }
+        
+        statusEl.textContent = 'Sending encrypted reply...';
+        
+        const state = {};
+        state[99] = encrypted;
+        
+        const sendAddress = msg.vendorAddress || buyerInboxAddress;
+        
+        const command = 'send address:' + sendAddress + ' amount:0.0001 tokenid:' + TOKEN_IDS.MINIMA + ' state:' + JSON.stringify(state);
+        console.log('Sending buyer reply via TX:', command);
+        
+        MDS.cmd(command, (response) => {
+            console.log('Buyer reply TX Response:', JSON.stringify(response));
+            if (response && response.status) {
+                const txid = response.response?.txnid || 'confirmed';
+                statusEl.textContent = 'Reply sent! TX: ' + txid.substring(0, 20) + '...';
+                statusEl.className = 'reply-status success';
+                sendBtn.textContent = '✓ Sent!';
+                
+                const message = {
+                    id: Date.now().toString(),
+                    ref: msg.ref + '-R',
+                    type: 'BUYER_REPLY',
+                    subject: 'Re: ' + (msg.ref || 'Order'),
+                    product: msg.product || '',
+                    message: messageText,
+                    timestamp: Date.now(),
+                    txid: txid,
+                    read: true,
+                    direction: 'sent'
+                };
+                addMessage(message);
+                
+                setTimeout(() => {
+                    closeBuyerReplyModal();
+                }, 2000);
+            } else {
+                statusEl.textContent = 'Failed: ' + (response?.error || 'Transaction failed');
+                statusEl.className = 'reply-status error';
+                sendBtn.disabled = false;
+                sendBtn.textContent = '📤 Send Reply';
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error sending buyer reply:', error);
+        statusEl.textContent = 'Error: ' + error.message;
+        statusEl.className = 'reply-status error';
+        sendBtn.disabled = false;
+        sendBtn.textContent = '📤 Send Reply';
+    }
+}
+
 function setupInboxEventListeners() {
     document.querySelectorAll('.inbox-tab').forEach(tab => {
         tab.addEventListener('click', () => {
@@ -1166,6 +1514,36 @@ function setupDetailEventListeners() {
             });
         });
     });
+    
+    const replyToVendorBtn = document.getElementById('reply-to-vendor-btn');
+    if (replyToVendorBtn) {
+        replyToVendorBtn.addEventListener('click', () => {
+            const msgId = replyToVendorBtn.dataset.id;
+            const msg = currentMessages.find(m => m.id === msgId);
+            if (msg) {
+                openBuyerReplyModal(msg);
+            }
+        });
+    }
+    
+    const buyerReplyModalClose = document.getElementById('buyer-reply-modal-close');
+    if (buyerReplyModalClose) {
+        buyerReplyModalClose.addEventListener('click', closeBuyerReplyModal);
+    }
+    
+    const buyerReplyModal = document.getElementById('buyer-reply-modal');
+    if (buyerReplyModal) {
+        buyerReplyModal.addEventListener('click', (e) => {
+            if (e.target.id === 'buyer-reply-modal') {
+                closeBuyerReplyModal();
+            }
+        });
+    }
+    
+    const buyerSendReplyBtn = document.getElementById('buyer-send-reply-btn');
+    if (buyerSendReplyBtn) {
+        buyerSendReplyBtn.addEventListener('click', sendBuyerReply);
+    }
 }
 
 function formatTime(timestamp) {
@@ -1241,7 +1619,7 @@ MDS.init(async (msg) => {
         
         if (typeof MDS !== 'undefined') {
             MDS.cmd('coinnotify action:add address:' + vendorAddress, function(resp) {
-                console.log('Coin notify registered:', resp);
+                console.log('Coin notify registered for vendor:', resp);
             });
         }
         
@@ -1252,6 +1630,21 @@ MDS.init(async (msg) => {
         setupNavigation();
         renderShop();
         initApp();
+        
+        getMyAddress(addr => {
+            if (addr) {
+                buyerInboxAddress = addr;
+                console.log('Buyer inbox address:', buyerInboxAddress);
+                
+                if (typeof MDS !== 'undefined') {
+                    MDS.cmd('coinnotify action:add address:' + buyerInboxAddress, function(resp) {
+                        console.log('Coin notify registered for buyer inbox:', resp);
+                    });
+                }
+                
+                startReplyPolling();
+            }
+        });
         
         const loadingIndicator = document.getElementById('loading-indicator');
         if (loadingIndicator) loadingIndicator.classList.remove('hidden');
@@ -1265,8 +1658,12 @@ MDS.init(async (msg) => {
         
     } else if (msg.event === 'NOTIFYCOIN') {
         console.log('NOTIFYCOIN event:', JSON.stringify(msg.data));
-        if (msg.data && msg.data.address === vendorAddress) {
-            processIncomingMessage(msg.data.coin);
+        if (msg.data) {
+            if (msg.data.address === vendorAddress) {
+                processIncomingMessage(msg.data.coin);
+            } else if (buyerInboxAddress && msg.data.address === buyerInboxAddress) {
+                processReplyMessage(msg.data.coin);
+            }
         }
     } else if (msg.event === 'NEWBLOCK') {
         mxToUsdRate = await fetchMXPrice();

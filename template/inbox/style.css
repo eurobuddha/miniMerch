@@ -233,6 +233,16 @@ body {
     border-left: 4px solid var(--yellow);
 }
 
+.message-item.buyer-reply {
+    background: rgba(155, 89, 182, 0.15);
+    border-left: 4px solid var(--purple);
+}
+
+.message-item.buyer-reply.unread {
+    background: rgba(155, 89, 182, 0.25);
+    border-left: 4px solid var(--bright-orange);
+}
+
 .message-icon {
     font-size: 1.5rem;
 }
@@ -467,6 +477,76 @@ body {
     font-style: italic;
 }
 
+.action-btn.reply-btn {
+    background: var(--purple);
+}
+
+.action-btn.reply-btn:hover {
+    background: #7d3c98;
+}
+
+.reply-modal-content {
+    max-width: 500px;
+}
+
+.reply-form {
+    margin-bottom: 1rem;
+}
+
+.reply-order-ref {
+    color: var(--brown);
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+}
+
+.reply-form textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid var(--brown);
+    border-radius: 8px;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.95rem;
+    resize: vertical;
+    min-height: 100px;
+    background: rgba(255,255,255,0.8);
+}
+
+.reply-form textarea:focus {
+    outline: none;
+    border-color: var(--primary-green);
+}
+
+.reply-status {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    border-radius: 8px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.reply-status.pending {
+    background: rgba(255,215,0,0.3);
+    color: var(--brown);
+}
+
+.reply-status.success {
+    background: rgba(76,175,80,0.3);
+    color: var(--primary-green);
+}
+
+.reply-status.error {
+    background: rgba(255,107,53,0.3);
+    color: #c62828;
+}
+
+#reply-to-address {
+    font-family: monospace;
+    font-size: 0.7rem;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 @media (max-width: 480px) {
     .header {
         flex-direction: column;
@@ -494,4 +574,34 @@ body {
     .message-actions {
         flex-direction: column;
     }
+}
+
+.reply-content {
+    background: rgba(155, 89, 182, 0.1);
+    border-radius: 12px;
+    padding: 1rem;
+    margin-top: 1rem;
+    border: 2px solid var(--purple);
+}
+
+.reply-content h4 {
+    color: var(--purple);
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.reply-message {
+    color: var(--dark);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: rgba(255,255,255,0.5);
+    padding: 0.75rem;
+    border-radius: 8px;
+}
+
+.message-type {
+    color: var(--purple);
+    font-weight: 700;
+    font-size: 0.75rem;
 }
