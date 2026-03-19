@@ -175,7 +175,7 @@ function processIncomingMessage(coin) {
 
 function getMyAddress(callback) {
     console.log('Getting address...');
-    MDS.cmd('address', (response) => {
+    MDS.cmd('getaddress', (response) => {
         console.log('Address response:', JSON.stringify(response));
         if (response.status && response.response && response.response.address) {
             myAddress = response.response.address;
@@ -189,12 +189,7 @@ function getMyAddress(callback) {
 }
 
 function checkForNewCoins() {
-    if (!myAddress) {
-        console.log('No address yet, skipping coin check');
-        return;
-    }
-    
-    console.log('Checking for new coins at:', myAddress);
+    console.log('Checking for new coins...');
     
     MDS.cmd('coins unspent', (response) => {
         if (response.status && response.response) {
@@ -209,13 +204,13 @@ function checkForNewCoins() {
             }
             
             if (Array.isArray(coins)) {
-                console.log('Found', coins.length, 'unspent coins');
+                console.log('Checking', coins.length, 'coins for messages...');
                 
                 for (const coin of coins) {
-                    if (coin.address === myAddress && coin.state && coin.state[99]) {
+                    if (coin.state && coin.state[99]) {
                         const exists = currentMessages.find(m => m.txid === (coin.txid || coin.coinid));
                         if (!exists) {
-                            console.log('Found new message coin!');
+                            console.log('Found coin with state[99] - trying to decrypt:', coin.coinid);
                             processIncomingMessage(coin);
                         }
                     }
@@ -486,11 +481,9 @@ MDS.init(async (msg) => {
         console.log('NOTIFYCOIN event received!:', JSON.stringify(msg.data));
         if (msg.data && msg.data.coin) {
             const coin = msg.data.coin;
-            if (coin.address === myAddress) {
-                console.log('Coin is for us, processing...');
+            if (coin.state && coin.state[99]) {
+                console.log('Coin has state[99] - trying to decrypt...');
                 processIncomingMessage(coin);
-            } else {
-                console.log('Coin address mismatch:', coin.address, 'vs', myAddress);
             }
         }
     } else if (msg.event === 'NEWBLOCK') {
