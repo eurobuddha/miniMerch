@@ -922,6 +922,19 @@ async function processPayment() {
             return;
         }
         
+        if (!buyerPublicKey) {
+            showPaymentStatus('Getting buyer info...', 'pending');
+            buyerPublicKey = await getMyPublicKey();
+            buyerAddress = buyerInboxAddress;
+            if (!buyerPublicKey) {
+                showPaymentStatus('Error: Could not get buyer public key', 'error');
+                payBtn.disabled = false;
+                payBtn.querySelector('.btn-text').textContent = '💸 Pay Now';
+                return;
+            }
+            console.log('Buyer info fetched on-demand:', { buyerPublicKey, buyerAddress });
+        }
+        
         let sendAmount;
         let tokenName;
         if (selectedPaymentMethod === 'USDT') {
@@ -974,7 +987,7 @@ async function processPayment() {
             
             const fullPayload = {
                 ...orderPayload,
-                buyerPublicKey: buyerPublicKey || buyerInfo.buyerPublicKey || '',
+                buyerPublicKey: buyerPublicKey || '',
                 buyerAddress: buyerAddress || ''
             };
             
