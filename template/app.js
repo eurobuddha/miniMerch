@@ -123,17 +123,15 @@ function updatePrices() {
         productPrice = PRODUCT.pricePerGram * size.weight;
     }
     
-    const totalPrice = productPrice + shippingFee;
+    console.log('updatePrices called - mode:', PRODUCT.mode, 'quantity/size:', isUnitsMode ? selectedQuantity : selectedSize, 'price:', productPrice);
     
-    console.log('updatePrices called - mode:', PRODUCT.mode, 'quantity/size:', isUnitsMode ? selectedQuantity : selectedSize, 'price:', productPrice, 'shipping:', shippingFee);
-    
-    document.getElementById('price-usd-value').textContent = `$${totalPrice.toFixed(2)} USDT`;
-    document.querySelector('.buy-button .btn-price').textContent = `$${totalPrice.toFixed(2)} USDT`;
+    document.getElementById('price-usd-value').textContent = `$${productPrice.toFixed(2)} USDT`;
+    document.querySelector('.buy-button .btn-price').textContent = `$${productPrice.toFixed(2)} USDT`;
     
     console.log('mxToUsdRate:', mxToUsdRate);
     
     if (mxToUsdRate > 0 && mxToUsdRate !== 1) {
-        const minimaAmount = totalPrice / mxToUsdRate * 1.10;
+        const minimaAmount = productPrice / mxToUsdRate;
         document.getElementById('price-minima').textContent = `${minimaAmount.toFixed(4)} Minima`;
         console.log('Price displayed:', minimaAmount, 'MINI');
     } else {
@@ -365,18 +363,30 @@ function openCheckoutModal() {
         sizeLabel = `${size.name} (${size.weight}g)`;
     }
     
+    const subtotal = productPrice;
     const totalPrice = productPrice + shippingFee;
+    const minimaSubtotal = subtotal / mxToUsdRate;
+    const minimaSlippage = subtotal / mxToUsdRate * 0.10;
+    const minimaTotal = totalPrice / mxToUsdRate * 1.10;
+    
     const payAmount = document.getElementById('pay-amount');
+    const summaryProduct = document.getElementById('summary-product');
+    const summaryShipping = document.getElementById('summary-shipping');
+    const summarySubtotal = document.getElementById('summary-subtotal');
+    const summaryUsd = document.getElementById('summary-usd');
     const summaryMinima = document.getElementById('summary-minima');
     
     document.getElementById('modal-product').textContent = PRODUCT.name;
     document.getElementById('summary-size').textContent = sizeLabel;
-    document.getElementById('summary-usd').textContent = `${totalPrice.toFixed(2)} USDT`;
+    
+    summaryProduct.textContent = `$${subtotal.toFixed(2)} USDT`;
+    summaryShipping.textContent = `$${shippingFee.toFixed(2)} USDT`;
+    summarySubtotal.textContent = `${totalPrice.toFixed(2)} USDT`;
+    summaryUsd.textContent = `$${totalPrice.toFixed(2)} USDT`;
     
     if (mxToUsdRate > 0 && mxToUsdRate !== 1) {
-        const minimaAmount = totalPrice / mxToUsdRate * 1.10;
-        summaryMinima.textContent = `${minimaAmount.toFixed(4)} Minima`;
-        payAmount.textContent = `${totalPrice.toFixed(2)} USD = ${minimaAmount.toFixed(4)} Minima`;
+        summaryMinima.innerHTML = `${minimaTotal.toFixed(4)} Minima<br><span class="slippage-note">(+10% slippage)</span>`;
+        payAmount.textContent = `${totalPrice.toFixed(2)} USD = ${minimaTotal.toFixed(4)} Minima`;
     } else if (mxToUsdRate === 1) {
         summaryMinima.textContent = `${totalPrice.toFixed(4)} Minima (price unavailable)`;
         payAmount.textContent = `${totalPrice.toFixed(2)} USD`;

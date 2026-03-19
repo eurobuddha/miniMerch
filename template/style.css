@@ -498,6 +498,18 @@ body {
     font-weight: 700;
 }
 
+.summary-item.total {
+    border-bottom: 2px solid var(--primary-green);
+    font-weight: 700;
+    color: var(--primary-green);
+}
+
+.slippage-note {
+    font-size: 0.75rem;
+    color: var(--brown);
+    font-weight: 400;
+}
+
 .payment-method h3 {
     font-family: 'Lilita One', cursive;
     font-size: 1.2rem;
