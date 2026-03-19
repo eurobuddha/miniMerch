@@ -101,6 +101,17 @@ function decryptMessage(encryptedData) {
                     console.error('Failed to parse decrypted data:', e);
                     resolve(null);
                 }
+            } else if (response.status === false && response.error) {
+                console.log('Decryption failed, trying plain JSON parse...');
+                try {
+                    const jsonStr = hexToText(cleanData);
+                    const data = JSON.parse(jsonStr);
+                    console.log('Parsed as plain JSON:', data);
+                    resolve(data);
+                } catch (e) {
+                    console.log('Not valid JSON either');
+                    resolve(null);
+                }
             } else {
                 resolve(null);
             }
