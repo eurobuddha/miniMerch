@@ -1,13 +1,23 @@
 const MESSAGES_STORAGE_KEY = 'mishop_inbox_messages';
-const LAST_COIN_STORAGE_KEY = 'mishop_last_coin_check';
 
 let currentMessages = [];
 let selectedMessage = null;
 let myAddress = null;
-let myPublicKey = null;
-let lastCheckedCoinId = null;
 let pollingInterval = null;
-let initAttempts = 0;
+
+function decodeObfuscated(str, salt) {
+    const decoded = atob(str);
+    const combined = decoded.substring(0, decoded.length - salt.length);
+    return combined.split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ salt.charCodeAt(i % salt.length))).join('');
+}
+
+function getVendorAddress() {
+    if (typeof INBOX_CONFIG === 'undefined' || !INBOX_CONFIG.vendorAddress) {
+        console.error('INBOX_CONFIG not found');
+        return null;
+    }
+    return INBOX_CONFIG.vendorAddress;
+}
 
 function textToHex(text) {
     let hex = '';
@@ -51,7 +61,6 @@ function decryptMessage(encryptedData) {
                     resolve(data);
                 } catch (e) {
                     console.error('Failed to parse decrypted data:', e);
-                    console.log('Raw response data:', response.response.data);
                     resolve(null);
                 }
             } else {
@@ -92,30 +101,6 @@ function loadMessages() {
     });
 }
 
-function saveLastCoinId(coinId) {
-    if (typeof MDS !== 'undefined') {
-        MDS.file.save(LAST_COIN_STORAGE_KEY, coinId);
-    } else {
-        localStorage.setItem(LAST_COIN_STORAGE_KEY, coinId);
-    }
-}
-
-function loadLastCoinId() {
-    return new Promise((resolve) => {
-        if (typeof MDS !== 'undefined') {
-            MDS.file.load(LAST_COIN_STORAGE_KEY, (response) => {
-                if (response.status && response.response) {
-                    resolve(response.response);
-                } else {
-                    resolve(null);
-                }
-            });
-        } else {
-            resolve(localStorage.getItem(LAST_COIN_STORAGE_KEY));
-        }
-    });
-}
-
 function addMessage(message) {
     const exists = currentMessages.find(m => m.ref === message.ref && m.txid === message.txid);
     if (exists) {
@@ -144,7 +129,6 @@ function processIncomingMessage(coin) {
     }
     
     console.log('Processing incoming message, coin:', coin.coinid || coin.txid);
-    console.log('State[99] preview:', coin.state[99].substring(0, 50) + '...');
     
     decryptMessage(coin.state[99]).then((decrypted) => {
         if (decrypted) {
@@ -166,58 +150,47 @@ function processIncomingMessage(coin) {
             };
             
             addMessage(message);
-            saveLastCoinId(coin.coinid);
         } else {
-            console.log('Could not decrypt message (might not be for us or wrong format)');
-        }
-    });
-}
-
-function getMyAddress(callback) {
-    console.log('Getting address...');
-    MDS.cmd('getaddress', (response) => {
-        console.log('Address response:', JSON.stringify(response));
-        if (response.status && response.response && response.response.address) {
-            myAddress = response.response.address;
-            console.log('My address:', myAddress);
-            callback(myAddress);
-        } else {
-            console.error('Failed to get address:', response);
-            callback(null);
+            console.log('Could not decrypt message (not for us)');
         }
     });
 }
 
 function checkForNewCoins() {
-    console.log('Checking for new coins...');
+    if (!myAddress) {
+        console.log('No address configured');
+        return;
+    }
     
-    MDS.cmd('coins unspent', (response) => {
+    console.log('Checking for new coins at:', myAddress);
+    
+    MDS.cmd('coins address:' + myAddress, (response) => {
         if (response.status && response.response) {
             let coins = response.response;
             if (typeof coins === 'string') {
                 try {
                     coins = JSON.parse(coins);
                 } catch (e) {
-                    console.log('Failed to parse coins response');
+                    console.log('Failed to parse coins');
                     return;
                 }
             }
             
             if (Array.isArray(coins)) {
-                console.log('Checking', coins.length, 'coins for messages...');
+                console.log('Found', coins.length, 'coins at this address');
                 
                 for (const coin of coins) {
                     if (coin.state && coin.state[99]) {
                         const exists = currentMessages.find(m => m.txid === (coin.txid || coin.coinid));
                         if (!exists) {
-                            console.log('Found coin with state[99] - trying to decrypt:', coin.coinid);
+                            console.log('Found message coin!');
                             processIncomingMessage(coin);
                         }
                     }
                 }
             }
         } else {
-            console.log('Coins response failed:', response);
+            console.log('Coins command failed:', response);
         }
     });
 }
@@ -226,7 +199,6 @@ function registerCoinNotify() {
     if (!myAddress) return;
     
     console.log('Registering coin notify for:', myAddress);
-    
     MDS.cmd('coinnotify action:add address:' + myAddress, (resp) => {
         console.log('Coin notify registered:', resp);
     });
@@ -263,10 +235,8 @@ function renderInbox() {
     const unreadCount = currentMessages.filter(m => !m.read).length;
     const totalCount = currentMessages.length;
     
-    const unreadBadge = document.getElementById('unread-count');
-    const totalBadge = document.getElementById('total-count');
-    if (unreadBadge) unreadBadge.textContent = unreadCount;
-    if (totalBadge) totalBadge.textContent = totalCount;
+    document.getElementById('unread-count').textContent = unreadCount;
+    document.getElementById('total-count').textContent = totalCount;
     
     let messages = currentMessages;
     if (currentView === 'inbox') {
@@ -406,63 +376,42 @@ function setupEventListeners() {
         });
     });
     
-    const modalClose = document.querySelector('.modal-close');
-    if (modalClose) {
-        modalClose.addEventListener('click', closeModal);
-    }
+    document.querySelector('.modal-close').addEventListener('click', closeModal);
     
-    const modal = document.getElementById('message-modal');
-    if (modal) {
-        modal.addEventListener('click', (e) => {
-            if (e.target.id === 'message-modal') closeModal();
-        });
-    }
+    document.getElementById('message-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'message-modal') closeModal();
+    });
 }
 
 function initInbox() {
-    initAttempts++;
-    console.log('Initializing inbox, attempt:', initAttempts);
+    const obfuscatedAddress = getVendorAddress();
     
-    const addrEl = document.getElementById('vendor-address');
-    if (addrEl) {
-        addrEl.textContent = 'Getting address...';
+    if (!obfuscatedAddress) {
+        console.error('No vendor address configured');
+        document.getElementById('inbox-list').innerHTML = `
+            <div class="empty-inbox">
+                <div class="empty-icon">⚠️</div>
+                <p>Configuration Error</p>
+                <p class="empty-hint">Vendor address not configured</p>
+            </div>
+        `;
+        return;
     }
     
-    getMyAddress((address) => {
-        if (address) {
-            const shortAddr = address.substring(0, 10) + '...' + address.substring(address.length - 8);
-            const addrEl = document.getElementById('vendor-address');
-            if (addrEl) {
-                addrEl.textContent = shortAddr;
-                addrEl.title = address;
-            }
-            
-            registerCoinNotify();
-            
-            setTimeout(() => {
-                console.log('Initial coin check...');
-                checkForNewCoins();
-            }, 2000);
-            
-            if (pollingInterval) {
-                clearInterval(pollingInterval);
-            }
-            pollingInterval = setInterval(() => {
-                checkForNewCoins();
-            }, 30000);
-        } else {
-            console.error('Could not get address, retrying in 5 seconds...');
-            if (initAttempts < 10) {
-                setTimeout(initInbox, 5000);
-            } else {
-                const addrEl = document.getElementById('vendor-address');
-                if (addrEl) {
-                    addrEl.textContent = 'Error - retrying...';
-                }
-                setTimeout(initInbox, 30000);
-            }
-        }
-    });
+    const decoded = JSON.parse(atob(obfuscatedAddress));
+    myAddress = decoded.address;
+    
+    console.log('Inbox configured for address:', myAddress);
+    
+    registerCoinNotify();
+    
+    setTimeout(() => {
+        checkForNewCoins();
+    }, 2000);
+    
+    pollingInterval = setInterval(() => {
+        checkForNewCoins();
+    }, 30000);
 }
 
 MDS.init(async (msg) => {
@@ -474,29 +423,23 @@ MDS.init(async (msg) => {
         currentMessages = await loadMessages();
         renderInbox();
         setupEventListeners();
-        
         initInbox();
         
     } else if (msg.event === 'NOTIFYCOIN') {
-        console.log('NOTIFYCOIN event received!:', JSON.stringify(msg.data));
-        if (msg.data && msg.data.coin) {
+        console.log('NOTIFYCOIN event:', JSON.stringify(msg.data));
+        if (msg.data && msg.data.coin && msg.data.coin.address === myAddress) {
             const coin = msg.data.coin;
             if (coin.state && coin.state[99]) {
-                console.log('Coin has state[99] - trying to decrypt...');
                 processIncomingMessage(coin);
             }
         }
     } else if (msg.event === 'NEWBLOCK') {
-        console.log('New block - checking for coins...');
-        checkForNewCoins();
-    } else if (msg.event === 'MDS_TIMER_10SECONDS') {
         if (myAddress) {
             checkForNewCoins();
         }
-    } else if (msg.event === 'MDS_TIMER_60SECONDS') {
-        if (!myAddress) {
-            console.log('Still no address, reinitializing...');
-            initInbox();
+    } else if (msg.event === 'MDS_TIMER_10SECONDS') {
+        if (myAddress) {
+            checkForNewCoins();
         }
     }
 });

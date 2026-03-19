@@ -18,10 +18,6 @@
             <span class="logo-icon">📬</span>
             <h1>miShop Inbox</h1>
         </div>
-        <div class="header-info">
-            <span class="address-label">Orders received at:</span>
-            <span class="vendor-address" id="vendor-address">Loading...</span>
-        </div>
         <div class="header-decoration">
             <svg class="peace-sign" viewBox="0 0 100 100" width="40" height="40">
                 <circle cx="50" cy="50" r="45" fill="none" stroke="#FFD700" stroke-width="4"/>
@@ -50,6 +46,7 @@
                     <div class="empty-icon">📭</div>
                     <p>No orders yet</p>
                     <p class="empty-hint">Orders from your shops will appear here</p>
+                    <button class="refresh-btn" id="refresh-btn">🔄 Check for Orders</button>
                 </div>
             </div>
         </div>
@@ -84,6 +81,7 @@
         <p class="peace">☮️ Peace, Love & Decentralisation ☮️</p>
     </footer>
 
+    <script src="config.js"></script>
     <script src="mds.js"></script>
     <script src="app.js"></script>
 </body>
