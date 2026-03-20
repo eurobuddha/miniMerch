@@ -69,12 +69,12 @@ function loadFile(key) {
             return;
         }
         MDS.file.load(key, (response) => {
-            if (response && response.status && response.response) {
+            if (response && response.status && response.response != null) {
                 fileReady = true;
-                if (typeof response.response === 'object') {
-                    resolve(JSON.stringify(response.response));
+                if (typeof response.response === 'string') {
+                    resolve(response.response);
                 } else {
-                    resolve(String(response.response));
+                    resolve(JSON.stringify(response.response));
                 }
             } else {
                 const local = localStorage.getItem(key);
@@ -392,17 +392,22 @@ async function saveMessages(messages) {
 
 async function loadMessages() {
     const data = await loadFile(MESSAGES_STORAGE_KEY);
-    if (data) {
-        try {
-            const msgs = JSON.parse(data);
-            console.log('loadMessages: loaded', msgs.length, 'messages from file');
-            return msgs;
-        } catch (e) {
-            console.error('loadMessages: parse error', e);
-        }
+    if (!data || data === 'undefined') {
+        console.log('loadMessages: no file data, returning empty');
+        return [];
     }
-    console.log('loadMessages: no file data, returning empty');
-    return [];
+    try {
+        const msgs = JSON.parse(data);
+        if (!Array.isArray(msgs)) {
+            console.error('loadMessages: file data is not an array, returning empty');
+            return [];
+        }
+        console.log('loadMessages: loaded', msgs.length, 'messages from file');
+        return msgs;
+    } catch (e) {
+        console.error('loadMessages: parse error', e);
+        return [];
+    }
 }
 
 function addMessage(message) {
