@@ -71,7 +71,11 @@ function loadFile(key) {
         MDS.file.load(key, (response) => {
             if (response && response.status && response.response) {
                 fileReady = true;
-                resolve(String(response.response));
+                if (typeof response.response === 'object') {
+                    resolve(JSON.stringify(response.response));
+                } else {
+                    resolve(String(response.response));
+                }
             } else {
                 const local = localStorage.getItem(key);
                 resolve(local);
