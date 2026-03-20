@@ -8,10 +8,50 @@ let myAddress = null;
 let pollingInterval = null;
 let dbReady = false;
 let mdsSqlWorking = false;
+let fileReady = false;
+const MESSAGES_FILE_KEY = 'mishop_inbox_messages';
 
 function escapeSQL(val) {
     if (val == null) return 'NULL';
     return "'" + String(val).replace(/'/g, "''") + "'";
+}
+
+function saveFile(key, data) {
+    return new Promise((resolve) => {
+        if (typeof MDS === 'undefined' || !MDS.file) {
+            localStorage.setItem(key, data);
+            resolve();
+            return;
+        }
+        MDS.file.save(key, data, (response) => {
+            if (response && response.status) {
+                fileReady = true;
+                resolve();
+            } else {
+                console.error('saveFile failed for', key, response);
+                localStorage.setItem(key, data);
+                resolve();
+            }
+        });
+    });
+}
+
+function loadFile(key) {
+    return new Promise((resolve) => {
+        if (typeof MDS === 'undefined' || !MDS.file) {
+            resolve(localStorage.getItem(key));
+            return;
+        }
+        MDS.file.load(key, (response) => {
+            if (response && response.status && response.response) {
+                fileReady = true;
+                resolve(String(response.response));
+            } else {
+                const local = localStorage.getItem(key);
+                resolve(local);
+            }
+        });
+    });
 }
 
 async function initDB() {
@@ -421,32 +461,24 @@ function encryptMessage(publicKey, data) {
 }
 
 async function saveMessages(messages) {
-    if (!mdsSqlWorking) {
-        localStorage.setItem('mishop_inbox_messages', JSON.stringify(messages));
-        console.log('saveMessages: using localStorage (mdsSqlWorking=false)');
-        return;
-    }
-    try {
-        await MDS.sql(`DELETE FROM messages`);
-        for (const m of messages) {
-            await saveMessageToDb(m);
-        }
-        console.log('saveMessages: saved', messages.length, 'messages to SQL');
-    } catch (err) {
-        console.error('saveMessages error:', err, '- falling back to localStorage');
-        localStorage.setItem('mishop_inbox_messages', JSON.stringify(messages));
-    }
+    const data = JSON.stringify(messages);
+    await saveFile(MESSAGES_FILE_KEY, data);
+    console.log('saveMessages: saved', messages.length, 'messages to file');
 }
 
 async function loadMessages() {
-    if (!mdsSqlWorking) {
-        const data = localStorage.getItem('mishop_inbox_messages');
-        console.log('loadMessages: using localStorage, found:', data ? 'data' : 'empty');
-        return data ? JSON.parse(data) : [];
+    const data = await loadFile(MESSAGES_FILE_KEY);
+    if (data) {
+        try {
+            const msgs = JSON.parse(data);
+            console.log('loadMessages: loaded', msgs.length, 'messages from file');
+            return msgs;
+        } catch (e) {
+            console.error('loadMessages: parse error', e);
+        }
     }
-    const msgs = await loadMessagesFromDb();
-    console.log('loadMessages: loaded', msgs.length, 'messages from SQL');
-    return msgs;
+    console.log('loadMessages: no file data, returning empty');
+    return [];
 }
 
 function addMessage(message) {

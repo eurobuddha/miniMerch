@@ -19,6 +19,7 @@ const BUYER_ADDRESS_STORAGE_KEY = 'mishop_buyer_address';
 
 let dbReady = false;
 let mdsSqlWorking = false;
+let fileReady = false;
 let selectedSize = 'eighth';
 let selectedQuantity = 1;
 let selectedPaymentMethod = 'USDT';
@@ -39,6 +40,44 @@ let replyPollingInterval = null;
 function escapeSQL(val) {
     if (val == null) return 'NULL';
     return "'" + String(val).replace(/'/g, "''") + "'";
+}
+
+function saveFile(key, data) {
+    return new Promise((resolve) => {
+        if (typeof MDS === 'undefined' || !MDS.file) {
+            localStorage.setItem(key, data);
+            resolve();
+            return;
+        }
+        MDS.file.save(key, data, (response) => {
+            if (response && response.status) {
+                fileReady = true;
+                resolve();
+            } else {
+                console.error('saveFile failed for', key, response);
+                localStorage.setItem(key, data);
+                resolve();
+            }
+        });
+    });
+}
+
+function loadFile(key) {
+    return new Promise((resolve) => {
+        if (typeof MDS === 'undefined' || !MDS.file) {
+            resolve(localStorage.getItem(key));
+            return;
+        }
+        MDS.file.load(key, (response) => {
+            if (response && response.status && response.response) {
+                fileReady = true;
+                resolve(String(response.response));
+            } else {
+                const local = localStorage.getItem(key);
+                resolve(local);
+            }
+        });
+    });
 }
 
 async function initDB() {
@@ -342,32 +381,24 @@ function getState99Data(state) {
 }
 
 async function saveMessages(messages) {
-    if (!mdsSqlWorking) {
-        localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
-        console.log('saveMessages: using localStorage (mdsSqlWorking=false)');
-        return;
-    }
-    try {
-        await MDS.sql(`DELETE FROM messages`);
-        for (const m of messages) {
-            await saveMessageToDb(m);
-        }
-        console.log('saveMessages: saved', messages.length, 'messages to SQL');
-    } catch (err) {
-        console.error('saveMessages error:', err, '- falling back to localStorage');
-        localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages));
-    }
+    const data = JSON.stringify(messages);
+    await saveFile(MESSAGES_STORAGE_KEY, data);
+    console.log('saveMessages: saved', messages.length, 'messages to file');
 }
 
 async function loadMessages() {
-    if (!mdsSqlWorking) {
-        const data = localStorage.getItem(MESSAGES_STORAGE_KEY);
-        console.log('loadMessages: using localStorage, found:', data ? 'data' : 'empty');
-        return data ? JSON.parse(data) : [];
+    const data = await loadFile(MESSAGES_STORAGE_KEY);
+    if (data) {
+        try {
+            const msgs = JSON.parse(data);
+            console.log('loadMessages: loaded', msgs.length, 'messages from file');
+            return msgs;
+        } catch (e) {
+            console.error('loadMessages: parse error', e);
+        }
     }
-    const msgs = await loadMessagesFromDb();
-    console.log('loadMessages: loaded', msgs.length, 'messages from SQL');
-    return msgs;
+    console.log('loadMessages: no file data, returning empty');
+    return [];
 }
 
 function addMessage(message) {
@@ -511,11 +542,11 @@ function getMyAddress(callback) {
 
 async function saveBuyerAddress(address) {
     if (!address) return;
-    await saveSetting('buyer_address', address);
+    await saveFile(BUYER_ADDRESS_STORAGE_KEY, address);
 }
 
 async function loadBuyerAddress() {
-    const address = await loadSetting('buyer_address');
+    const address = await loadFile(BUYER_ADDRESS_STORAGE_KEY);
     if (address && (address.startsWith('0x') || address.startsWith('Mx'))) {
         return address;
     }
@@ -808,11 +839,11 @@ async function rebroadcastOrder(order) {
 }
 
 async function saveLastPrice(price) {
-    await saveSetting('last_price', price.toString());
+    await saveFile(PRICE_STORAGE_KEY, price.toString());
 }
 
 async function loadLastPrice() {
-    const saved = await loadSetting('last_price');
+    const saved = await loadFile(PRICE_STORAGE_KEY);
     return saved ? parseFloat(saved) : DEFAULT_MINIMA_PRICE;
 }
 
@@ -2140,13 +2171,8 @@ MDS.init(async (msg) => {
         updatePrices();
         
     } else if (msg.event === 'NOTIFYCOIN') {
-        console.log('NOTIFYCOIN event:', JSON.stringify(msg.data));
-        if (msg.data) {
-            if (msg.data.address === vendorAddress) {
-                processIncomingMessage(msg.data.coin);
-            } else if (buyerInboxAddress && msg.data.address === buyerInboxAddress) {
-                processReplyMessage(msg.data.coin);
-            }
+        if (msg.data && buyerInboxAddress && msg.data.address === buyerInboxAddress) {
+            processReplyMessage(msg.data.coin);
         }
     } else if (msg.event === 'NEWBLOCK') {
         mxToUsdRate = await fetchMXPrice();
