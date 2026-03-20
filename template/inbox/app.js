@@ -141,15 +141,15 @@ async function loadMessagesFromDb() {
 
 async function isTxProcessed(txid) {
     if (!txid) return false;
-    if (!mdsSqlWorking) {
-        return currentMessages.some(m => m.txid === txid);
-    }
+    if (currentMessages.some(m => m.txid === txid)) return true;
+    const data = await loadFile(MESSAGES_FILE_KEY);
+    if (!data) return false;
     try {
-        const resp = await MDS.sql(`SELECT txid FROM processed_txids WHERE txid = ${escapeSQL(txid)}`);
-        return !!(resp && resp.status && resp.rows && resp.rows.length > 0);
-    } catch (err) {
-        console.error('isTxProcessed error:', err);
-        return currentMessages.some(m => m.txid === txid);
+        let messages = typeof data === 'string' ? JSON.parse(data) : data;
+        if (!Array.isArray(messages)) return false;
+        return messages.some(m => m.txid === txid);
+    } catch (e) {
+        return false;
     }
 }
 

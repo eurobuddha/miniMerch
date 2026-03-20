@@ -403,14 +403,14 @@ async function loadMessages() {
         let msgs;
         if (typeof data === 'string') {
             msgs = JSON.parse(data);
-        } else if (typeof data === 'object' && data !== null && Array.isArray(data)) {
+        } else if (data !== null && typeof data === 'object') {
             msgs = data;
         } else {
-            console.error('loadMessages: file data is not an array (' + typeof data + '), falling back to SQL');
+            console.error('loadMessages: unexpected data type (' + typeof data + '), falling back to SQL');
             return loadMessagesFromDb();
         }
         if (!Array.isArray(msgs)) {
-            console.error('loadMessages: parsed data is not an array (' + typeof msgs + '), falling back to SQL');
+            console.error('loadMessages: file data is object not array, falling back to SQL');
             return loadMessagesFromDb();
         }
         console.log('loadMessages: loaded', msgs.length, 'messages from file');
@@ -600,8 +600,8 @@ async function sendEncryptedOrder(orderDetails, callback) {
 
 function getMyPublicKey() {
     return new Promise((resolve) => {
-        MDS.cmd('maxmessage action:publickey', (response) => {
-            console.log('getMyPublicKey response:', JSON.stringify(response));
+        MDS.cmd('maxima action:info', (response) => {
+            console.log('getMyPublicKey (maxima info) response:', JSON.stringify(response));
             if (response.status && response.response && response.response.publickey) {
                 resolve(response.response.publickey);
                 return;
@@ -610,23 +610,7 @@ function getMyPublicKey() {
                 resolve(response.response.message.publickey);
                 return;
             }
-
-            if (!vendorPublicKey) {
-                resolve(null);
-                return;
-            }
-
-            const dummyData = textToHex(JSON.stringify({type: 'KEY_REQUEST', timestamp: Date.now()}));
-            MDS.cmd('maxmessage action:encrypt publickey:' + vendorPublicKey + ' data:' + dummyData, (fallbackResponse) => {
-                console.log('getMyPublicKey fallback response:', JSON.stringify(fallbackResponse));
-                if (fallbackResponse.status && fallbackResponse.response && fallbackResponse.response.message && fallbackResponse.response.message.mxpublickey) {
-                    resolve(fallbackResponse.response.message.mxpublickey);
-                } else if (fallbackResponse.status && fallbackResponse.response && fallbackResponse.response.mxpublickey) {
-                    resolve(fallbackResponse.response.mxpublickey);
-                } else {
-                    resolve(null);
-                }
-            });
+            resolve(null);
         });
     });
 }
@@ -733,11 +717,10 @@ async function getOrCreateBuyerAddress(preloadedIdentity) {
     }
     return new Promise((resolve) => {
         getMyAddress((address) => {
-            const addr = address || null;
-            if (addr) {
-                saveBuyerAddress(addr);
+            if (address) {
+                saveBuyerAddress(address);
             }
-            resolve(addr);
+            resolve(address || null);
         });
     });
 }
@@ -2402,8 +2385,9 @@ MDS.init(async (msg) => {
                 buyerPublicKey = preloadedIdentity.publicKey;
                 console.log('Buyer public key loaded from stored identity:', buyerPublicKey.substring(0, 20) + '...');
             } else if (preloadedIdentity && preloadedIdentity.publicKey === null) {
-                console.log('Buyer public key is null in stored identity (reinstall detected) — using null, will fetch on first order');
-                buyerPublicKey = null;
+                console.log('Buyer public key is null in stored identity (reinstall detected) — fetching fresh key');
+                buyerPublicKey = await getMyPublicKey();
+                console.log('Fresh buyer public key from node:', buyerPublicKey ? buyerPublicKey.substring(0, 20) + '...' : 'null');
             } else {
                 buyerPublicKey = await getMyPublicKey();
                 console.log('New buyer public key from node:', buyerPublicKey ? buyerPublicKey.substring(0, 20) + '...' : 'null');

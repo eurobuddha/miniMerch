@@ -269,7 +269,21 @@ MDS.init(function(msg) {
     }
 
     if (msg.event === 'MDS_TIMER_10SECONDS') {
-        if (!config) return;
+        if (!config || !config.inboxAddress) {
+            loadFile(CONFIG_FILE_KEY).then(function(data) {
+                if (!data) return;
+                try {
+                    let parsed = typeof data === 'string' ? JSON.parse(data) : data;
+                    if (parsed && parsed.inboxAddress && (!config || config.inboxAddress !== parsed.inboxAddress)) {
+                        config = parsed;
+                        console.log('SVC inbox: config updated, inboxAddress: ' + config.inboxAddress.substring(0, 20) + '...');
+                        MDS.cmd('coinnotify action:add address:' + config.inboxAddress, function(resp) {
+                            console.log('SVC coinnotify registered: ' + JSON.stringify(resp));
+                        });
+                    }
+                } catch (e) {}
+            });
+        }
         scanForNewMessages();
     }
 });
