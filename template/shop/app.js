@@ -73,7 +73,15 @@ function loadFile(key) {
         MDS.file.load(key, (response) => {
             if (response && response.status && response.response != null) {
                 fileReady = true;
-                resolve(response.response);
+                if (typeof response.response === 'string') {
+                    resolve(response.response);
+                } else {
+                    try {
+                        resolve(JSON.stringify(response.response));
+                    } catch (e) {
+                        resolve(null);
+                    }
+                }
             } else {
                 console.log('loadFile: MDS load failed/unavailable for', key, 'trying localStorage');
                 const local = localStorage.getItem(key);
@@ -397,8 +405,9 @@ async function loadMessages() {
     }
     try {
         let msgs;
+        console.log('loadMessages: raw data type:', typeof data, 'preview:', typeof data === 'string' ? data.substring(0, 80) : (Array.isArray(data) ? '[array len:'+data.length+']' : typeof data));
         if (typeof data === 'string') {
-            try { msgs = JSON.parse(data); } catch { msgs = null; }
+            try { msgs = JSON.parse(data); } catch (e) { msgs = null; }
         } else if (data !== null && typeof data === 'object') {
             if (Array.isArray(data)) {
                 msgs = data;
@@ -409,6 +418,7 @@ async function loadMessages() {
         } else {
             msgs = null;
         }
+        console.log('loadMessages: parsed type:', typeof msgs, 'isArray:', Array.isArray(msgs), 'len:', Array.isArray(msgs) ? msgs.length : 'N/A');
         if (!Array.isArray(msgs)) {
             console.error('loadMessages: not an array, falling back to SQL');
             return loadMessagesFromDb();
