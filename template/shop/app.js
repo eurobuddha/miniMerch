@@ -683,6 +683,15 @@ async function loadBuyerIdentity() {
             identity = data;
         } else {
             console.error('loadBuyerIdentity: unexpected data type:', typeof data);
+            return null;
+        }
+        if (identity && identity.address && (identity.address.startsWith('0x') || identity.address.startsWith('Mx'))) {
+            console.log('loadBuyerIdentity: loaded existing identity, address:', identity.address.substring(0, 20) + '...');
+            return identity;
+        }
+    } catch (e) {
+        console.error('loadBuyerIdentity: parse error', e, 'data:', String(data).substring(0, 100));
+    }
     return null;
 }
 
@@ -709,15 +718,6 @@ async function loadShopConfig() {
         }
     } catch (e) {
         console.error('loadShopConfig: parse error', e);
-    }
-    return null;
-}
-        if (identity && identity.address && (identity.address.startsWith('0x') || identity.address.startsWith('Mx'))) {
-            console.log('loadBuyerIdentity: loaded existing identity, address:', identity.address.substring(0, 20) + '...');
-            return identity;
-        }
-    } catch (e) {
-        console.error('loadBuyerIdentity: parse error', e, 'data:', String(data).substring(0, 100));
     }
     return null;
 }
@@ -1784,6 +1784,7 @@ async function processPayment() {
                         });
                         
                         saveBuyerIdentity(buyerAddress || buyerInboxAddress, buyerPublicKey);
+                        await saveShopConfig();
                         
                         showPaymentStatus('Sending payment...', 'pending');
                         
