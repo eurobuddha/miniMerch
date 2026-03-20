@@ -78,6 +78,7 @@ function loadFile(key) {
                     resolve(JSON.stringify(response.response));
                 }
             } else {
+                console.log('loadFile: MDS load failed/unavailable for', key, 'trying localStorage');
                 const local = localStorage.getItem(key);
                 resolve(local);
             }
@@ -393,14 +394,22 @@ async function saveMessages(messages) {
 
 async function loadMessages() {
     const data = await loadFile(MESSAGES_STORAGE_KEY);
-    if (!data || data === 'undefined') {
+    if (!data || data === 'undefined' || data === 'null') {
         console.log('loadMessages: no file data, returning empty (will rebuild from chain)');
         return [];
     }
     try {
-        const msgs = JSON.parse(data);
+        let msgs;
+        if (typeof data === 'string') {
+            msgs = JSON.parse(data);
+        } else if (typeof data === 'object' && data !== null && Array.isArray(data)) {
+            msgs = data;
+        } else {
+            console.error('loadMessages: file data is not an array (' + typeof data + '), rebuilding from chain');
+            return recoverMessagesFromChain();
+        }
         if (!Array.isArray(msgs)) {
-            console.error('loadMessages: file data is not an array (' + typeof msgs + '), rebuilding from chain');
+            console.error('loadMessages: parsed data is not an array (' + typeof msgs + '), rebuilding from chain');
             return recoverMessagesFromChain();
         }
         console.log('loadMessages: loaded', msgs.length, 'messages from file');
@@ -648,21 +657,38 @@ async function loadBuyerAddress() {
 }
 
 async function saveBuyerIdentity(address, publicKey) {
-    if (!address) return;
+    if (!address) {
+        console.error('saveBuyerIdentity: no address provided, skipping');
+        return;
+    }
     const identity = JSON.stringify({ address, publicKey: publicKey || null });
+    console.log('saveBuyerIdentity: saving address:', address.substring(0, 20) + '...', 'publicKey:', publicKey ? 'yes' : 'null');
     await saveFile(BUYER_IDENTITY_KEY, identity);
+    console.log('saveBuyerIdentity: saved successfully');
 }
 
 async function loadBuyerIdentity() {
     const data = await loadFile(BUYER_IDENTITY_KEY);
-    if (!data || data === 'undefined') return null;
+    if (!data || data === 'undefined' || data === 'null') {
+        console.log('loadBuyerIdentity: no data found, will create new address');
+        return null;
+    }
     try {
-        const identity = JSON.parse(data);
+        let identity;
+        if (typeof data === 'string') {
+            identity = JSON.parse(data);
+        } else if (typeof data === 'object' && data !== null) {
+            identity = data;
+        } else {
+            console.error('loadBuyerIdentity: unexpected data type:', typeof data);
+            return null;
+        }
         if (identity && identity.address && (identity.address.startsWith('0x') || identity.address.startsWith('Mx'))) {
+            console.log('loadBuyerIdentity: loaded existing identity, address:', identity.address.substring(0, 20) + '...');
             return identity;
         }
     } catch (e) {
-        console.error('loadBuyerIdentity: parse error', e);
+        console.error('loadBuyerIdentity: parse error', e, 'data:', String(data).substring(0, 100));
     }
     return null;
 }
@@ -678,8 +704,8 @@ function getFreshBuyerAddress() {
     });
 }
 
-async function getOrCreateBuyerAddress() {
-    const savedIdentity = await loadBuyerIdentity();
+async function getOrCreateBuyerAddress(preloadedIdentity) {
+    const savedIdentity = preloadedIdentity || await loadBuyerIdentity();
     if (savedIdentity && savedIdentity.address) {
         return savedIdentity.address;
     }
@@ -2371,22 +2397,22 @@ MDS.init(async (msg) => {
         renderShop();
         initApp();
         
-        buyerAddress = await getOrCreateBuyerAddress();
+        const preloadedIdentity = await loadBuyerIdentity();
+        buyerAddress = await getOrCreateBuyerAddress(preloadedIdentity);
         buyerInboxAddress = buyerAddress;
         if (buyerInboxAddress) {
             console.log('Buyer inbox address:', buyerInboxAddress);
 
-            const savedIdentity = await loadBuyerIdentity();
-            if (savedIdentity && savedIdentity.publicKey) {
-                buyerPublicKey = savedIdentity.publicKey;
-                console.log('Buyer public key loaded from storage:', buyerPublicKey.substring(0, 20) + '...');
+            if (preloadedIdentity && preloadedIdentity.publicKey) {
+                buyerPublicKey = preloadedIdentity.publicKey;
+                console.log('Buyer public key loaded from identity:', buyerPublicKey.substring(0, 20) + '...');
             } else {
                 buyerPublicKey = await getMyPublicKey();
-                if (buyerPublicKey) {
-                    console.log('Buyer public key set:', buyerPublicKey);
-                    await saveBuyerIdentity(buyerInboxAddress, buyerPublicKey);
-                }
             }
+            if (buyerPublicKey) {
+                console.log('Buyer public key set:', buyerPublicKey.substring(0, 20) + '...');
+            }
+            await saveBuyerIdentity(buyerInboxAddress, buyerPublicKey);
 
             if (typeof MDS !== 'undefined') {
                 MDS.cmd('coinnotify action:add address:' + buyerInboxAddress, function(resp) {

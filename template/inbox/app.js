@@ -51,6 +51,7 @@ function loadFile(key) {
                     resolve(JSON.stringify(response.response));
                 }
             } else {
+                console.log('loadFile: MDS load failed/unavailable for', key, 'trying localStorage');
                 const local = localStorage.getItem(key);
                 resolve(local);
             }
@@ -264,6 +265,18 @@ async function recoverFromChain() {
                     if (!output || !output.storestate) continue;
                     
                     const stateData = getStateFromArray(output.state);
+                    let isSentRecord = false;
+                    let sentStateData = null;
+                    if (!stateData && output.state && Array.isArray(output.state)) {
+                        for (const s of output.state) {
+                            if (s && s.port === 98 && s.data) {
+                                stateData = s.data;
+                                isSentRecord = true;
+                                sentStateData = s.data;
+                                break;
+                            }
+                        }
+                    }
                     if (!stateData) continue;
                     
                     const txid = txpow.txpowid || '';
@@ -277,12 +290,12 @@ async function recoverFromChain() {
                         continue;
                     }
                     
-                    console.log('Recovery: found state[99] in txpow:', txid.substring(0, 20));
+                    console.log('Recovery: found state[99]/state[98] in txpow:', txid.substring(0, 20), 'isSentRecord:', isSentRecord);
                     
                     const coin = {
                         txid: txid,
                         coinid: output.coinid || txid,
-                        state: stateData
+                        state: output.state
                     };
                     
                     await markTxProcessed(txid);
@@ -290,7 +303,32 @@ async function recoverFromChain() {
                     await new Promise((resolve) => {
                         decryptMessage(stateData).then((decrypted) => {
                             if (!decrypted) {
-                                console.log('Recovery: could not decrypt txpow state[99], skipping');
+                                console.log('Recovery: could not decrypt txpow state[99]/state[98], skipping');
+                                resolve();
+                                return;
+                            }
+                            
+                            if (isSentRecord || decrypted.type === 'SENT_RECORD') {
+                                const sentMessage = {
+                                    id: 'sent_' + (decrypted.timestamp || Date.now()) + '_' + Math.random().toString(36).substr(2, 6),
+                                    ref: decrypted.ref || 'Unknown',
+                                    type: 'REPLY',
+                                    originalOrder: decrypted.originalOrder || decrypted.ref || '',
+                                    originalProduct: decrypted.originalOrder || '',
+                                    message: decrypted.message || '',
+                                    timestamp: decrypted.timestamp || Date.now(),
+                                    txid: txid,
+                                    read: true,
+                                    direction: 'sent',
+                                    buyerPublicKey: '',
+                                    buyerAddress: decrypted.buyerAddress || ''
+                                };
+                                const exists = currentMessages.find(m => m.txid === txid && m.direction === 'sent');
+                                if (!exists) {
+                                    currentMessages.unshift(sentMessage);
+                                    saveMessages(currentMessages);
+                                    console.log('Recovery: sent message recovered:', sentMessage.ref);
+                                }
                                 resolve();
                                 return;
                             }
@@ -472,14 +510,22 @@ async function saveMessages(messages) {
 
 async function loadMessages() {
     const data = await loadFile(MESSAGES_FILE_KEY);
-    if (!data || data === 'undefined') {
+    if (!data || data === 'undefined' || data === 'null') {
         console.log('loadMessages: no file data, returning empty (will rebuild from chain)');
         return [];
     }
     try {
-        const msgs = JSON.parse(data);
+        let msgs;
+        if (typeof data === 'string') {
+            msgs = JSON.parse(data);
+        } else if (typeof data === 'object' && data !== null && Array.isArray(data)) {
+            msgs = data;
+        } else {
+            console.error('loadMessages: file data is not an array (' + typeof data + '), rebuilding from chain');
+            return recoverMessagesFromChain();
+        }
         if (!Array.isArray(msgs)) {
-            console.error('loadMessages: file data is not an array (' + typeof msgs + '), rebuilding from chain');
+            console.error('loadMessages: parsed data is not an array (' + typeof msgs + '), rebuilding from chain');
             return recoverMessagesFromChain();
         }
         console.log('loadMessages: loaded', msgs.length, 'messages from file');
@@ -606,24 +652,54 @@ function processIncomingMessage(coin) {
         }
         
         let stateData = getState99Data(coin.state);
+        let isSentRecord = false;
+        
+        if (!stateData && coin.state && coin.state[98]) {
+            stateData = coin.state[98];
+            isSentRecord = true;
+        }
         
         if (!stateData) {
             if (coin.state && coin.state[99]) {
                 stateData = coin.state[99];
             } else {
-                console.log('Coin has no state[99] - not a message');
+                console.log('Coin has no state[99]/state[98] - not a message');
                 return;
             }
         }
         
-        console.log('Processing incoming message, coin:', coin.coinid || coin.txid);
-        console.log('Found state[99] data, length:', stateData.length);
+        console.log('Processing incoming message, coin:', coin.coinid || coin.txid, 'isSentRecord:', isSentRecord);
+        console.log('Found state[99]/state[98] data, length:', stateData.length);
         
         markTxProcessed(coinTxid);
         
         decryptMessage(stateData).then((decrypted) => {
             if (decrypted) {
                 console.log('Decrypted message:', JSON.stringify(decrypted));
+                
+                if (isSentRecord || decrypted.type === 'SENT_RECORD') {
+                    const sentMessage = {
+                        id: 'sent_' + (decrypted.timestamp || Date.now()) + '_' + Math.random().toString(36).substr(2, 6),
+                        ref: decrypted.ref || 'Unknown',
+                        type: 'REPLY',
+                        originalOrder: decrypted.originalOrder || decrypted.ref || '',
+                        originalProduct: decrypted.originalOrder || '',
+                        message: decrypted.message || '',
+                        timestamp: decrypted.timestamp || Date.now(),
+                        txid: coinTxid,
+                        read: true,
+                        direction: 'sent',
+                        buyerPublicKey: '',
+                        buyerAddress: decrypted.buyerAddress || ''
+                    };
+                    const exists = currentMessages.find(m => m.txid === coinTxid && m.direction === 'sent');
+                    if (!exists) {
+                        currentMessages.unshift(sentMessage);
+                        saveMessages(currentMessages);
+                        console.log('Sent message recovered from chain:', sentMessage.ref);
+                    }
+                    return;
+                }
                 
                 const isBuyerReply = decrypted.type === 'BUYER_REPLY';
                 
@@ -714,12 +790,22 @@ function checkForNewCoins() {
                     console.log('Has state?:', coin.state !== undefined);
                     console.log('State keys:', coin.state ? Object.keys(coin.state) : 'none');
                     
-                    const stateData = getState99Data(coin.state);
-                    console.log('state[99] data:', stateData ? (stateData.substring(0, 50) + '...') : 'N/A');
+                    let stateData = getState99Data(coin.state);
+                    let isSentRecord = false;
+                    if (!stateData && coin.state && Array.isArray(coin.state)) {
+                        for (const entry of coin.state) {
+                            if (entry && entry.port === 98 && entry.data) {
+                                stateData = entry.data;
+                                isSentRecord = true;
+                                break;
+                            }
+                        }
+                    }
+                    console.log('state[99]/state[98] data:', stateData ? (stateData.substring(0, 50) + '...') : 'N/A', 'isSentRecord:', isSentRecord);
                     
                     if (stateData) {
                         messageCoins++;
-                        console.log('*** HAS STATE[99]! ***');
+                        console.log('*** HAS STATE[99]/STATE[98]! ***');
                         const coinTxid = coin.txid || coin.coinid || '';
                         const existsInMem = currentMessages.find(m => m.txid === coinTxid);
                         if (existsInMem) {
@@ -1121,6 +1207,23 @@ async function sendReply(msg) {
         const state = {};
         state[99] = encrypted;
         console.log('Vendor reply encrypted length:', String(encrypted).length);
+        
+        const sentRecordPayload = {
+            type: 'SENT_RECORD',
+            ref: msg.ref,
+            originalOrder: msg.product ? (msg.product + ' - ' + (msg.size || '')) : msg.ref,
+            message: messageText,
+            timestamp: Date.now(),
+            direction: 'sent',
+            buyerAddress: msg.buyerAddress || ''
+        };
+        const encryptSentResult = await encryptMessage(msg.buyerPublicKey, sentRecordPayload);
+        if (encryptSentResult && encryptSentResult.encrypted) {
+            state[98] = encryptSentResult.encrypted;
+            console.log('Sent message record encrypted for chain persistence');
+        } else {
+            console.error('Failed to encrypt sent message record for chain persistence');
+        }
         
         console.log('Vendor public key for buyer reply:', vendorPublicKey);
         console.log('Vendor address for buyer reply:', myAddress);
