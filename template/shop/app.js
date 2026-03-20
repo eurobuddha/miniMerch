@@ -1784,7 +1784,7 @@ async function processPayment() {
                         });
                         
                         saveBuyerIdentity(buyerAddress || buyerInboxAddress, buyerPublicKey);
-                        await saveShopConfig();
+                        saveShopConfig();
                         
                         showPaymentStatus('Sending payment...', 'pending');
                         
