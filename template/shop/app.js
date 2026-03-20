@@ -1636,6 +1636,7 @@ async function processPayment() {
                 return;
             }
             console.log('Buyer info fetched on-demand:', { buyerPublicKey, buyerAddress });
+            await saveBuyerIdentity(buyerInboxAddress, buyerPublicKey);
         }
         
         let sendAmount;
@@ -2405,12 +2406,13 @@ MDS.init(async (msg) => {
 
             if (preloadedIdentity && preloadedIdentity.publicKey) {
                 buyerPublicKey = preloadedIdentity.publicKey;
-                console.log('Buyer public key loaded from identity:', buyerPublicKey.substring(0, 20) + '...');
+                console.log('Buyer public key loaded from stored identity:', buyerPublicKey.substring(0, 20) + '...');
+            } else if (preloadedIdentity && preloadedIdentity.publicKey === null) {
+                console.log('Buyer public key is null in stored identity (reinstall detected) — using null, will fetch on first order');
+                buyerPublicKey = null;
             } else {
                 buyerPublicKey = await getMyPublicKey();
-            }
-            if (buyerPublicKey) {
-                console.log('Buyer public key set:', buyerPublicKey.substring(0, 20) + '...');
+                console.log('New buyer public key from node:', buyerPublicKey ? buyerPublicKey.substring(0, 20) + '...' : 'null');
             }
             await saveBuyerIdentity(buyerInboxAddress, buyerPublicKey);
 
