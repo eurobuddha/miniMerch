@@ -1,64 +1,12 @@
-const MESSAGES_FILE_KEY = '/mishop_messages.json';
-const CONFIG_FILE_KEY = '/mishop_config.json';
+// ChainMail-style protocol: Fixed address for ALL messages, encryption-based privacy
+const MINIMERCH_ADDRESS = '0x4D494E494D45524348'; // hex for "MINIMERCH"
 const TOKEN_ID_MINIMA = '0x00';
 
-let config = null;
 let dbReady = false;
 
 function escapeSQL(val) {
     if (val == null) return 'NULL';
     return "'" + String(val).replace(/'/g, "''") + "'";
-}
-
-function saveFile(key, data) {
-    return new Promise((resolve) => {
-        MDS.file.save(key, data, (response) => {
-            if (response && response.status) {
-                resolve(true);
-            } else {
-                console.log('SVC saveFile failed for ' + key);
-                resolve(false);
-            }
-        });
-    });
-}
-
-function loadFile(key) {
-    return new Promise((resolve) => {
-        MDS.file.load(key, (response) => {
-            if (response && response.status && response.response != null) {
-                // MDS returns wrapper: {action:"LOAD", file:"...", data:"actual content"}
-                // Extract the actual data from response.response.data
-                let data = response.response;
-                if (typeof data === 'object' && data !== null && 'data' in data) {
-                    data = data.data;
-                }
-                if (typeof data === 'string') {
-                    resolve(data);
-                } else if (data != null) {
-                    try {
-                        resolve(JSON.stringify(data));
-                    } catch (e) {
-                        resolve(null);
-                    }
-                } else {
-                    resolve(null);
-                }
-            } else {
-                resolve(null);
-            }
-        });
-    });
-}
-
-function saveFileAsync(key, data) {
-    if (typeof MDS !== 'undefined' && MDS.file) {
-        MDS.file.save(key, data, function(response) {
-            if (!response || !response.status) {
-                console.log('SVC saveFile async failed: ' + key);
-            }
-        });
-    }
 }
 
 function hexToText(hex) {
@@ -69,6 +17,10 @@ function hexToText(hex) {
     return text;
 }
 
+function generateRandomId() {
+    return Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
+}
+
 function getState99Data(state) {
     if (!state) return null;
     if (Array.isArray(state)) {
@@ -76,36 +28,12 @@ function getState99Data(state) {
             let entry = state[i];
             if (entry && entry.port === 99 && entry.data) return entry.data;
             if (entry && entry.port === '99' && entry.data) return entry.data;
-            if (entry && typeof entry === 'object' && entry[99]) return entry[99];
         }
         return null;
     }
     if (typeof state === 'object') {
         if (state[99]) return state[99];
         if (state['99']) return state['99'];
-        for (let key in state) {
-            if (state[key] && typeof state[key] === 'object' && state[key].port === 99) {
-                return state[key].data;
-            }
-        }
-    }
-    return null;
-}
-
-function getState98Data(state) {
-    if (!state) return null;
-    if (Array.isArray(state)) {
-        for (let i = 0; i < state.length; i++) {
-            let entry = state[i];
-            if (entry && entry.port === 98 && entry.data) return entry.data;
-            if (entry && entry.port === '98' && entry.data) return entry.data;
-            if (entry && typeof entry === 'object' && entry[98]) return entry[98];
-        }
-        return null;
-    }
-    if (typeof state === 'object') {
-        if (state[98]) return state[98];
-        if (state['98']) return state['98'];
     }
     return null;
 }
@@ -118,35 +46,35 @@ function initDatabase(callback) {
     MDS.sql(
         'CREATE TABLE IF NOT EXISTS messages (' +
         'id INTEGER PRIMARY KEY AUTOINCREMENT,' +
+        'randomid TEXT UNIQUE,' +
         'ref TEXT, type TEXT, product TEXT, size TEXT,' +
         'amount TEXT, currency TEXT, delivery TEXT, shipping TEXT,' +
-        'message TEXT, timestamp INTEGER, txid TEXT,' +
+        'message TEXT, timestamp INTEGER, coinid TEXT,' +
         'read INTEGER, direction TEXT,' +
         'buyerPublicKey TEXT, buyerAddress TEXT,' +
-        'vendorPublicKey TEXT, vendorAddress TEXT,' +
-        'UNIQUE(ref, txid))',
+        'vendorPublicKey TEXT, vendorAddress TEXT)',
         function(response) {
             if (response && response.status) {
                 dbReady = true;
-                console.log('SVC DB: messages table ready');
+                console.log('SVC shop: messages table ready');
                 callback(true);
             } else {
-                console.log('SVC DB init failed: ' + JSON.stringify(response));
+                console.log('SVC shop: DB init failed:', JSON.stringify(response));
                 callback(false);
             }
         }
     );
 }
 
-function isTxStored(txid, callback) {
+function isMessageStored(randomid, callback) {
+    if (!randomid) {
+        callback(false);
+        return;
+    }
     MDS.sql(
-        'SELECT txid FROM messages WHERE txid = ' + escapeSQL(txid),
+        'SELECT randomid FROM messages WHERE randomid = ' + escapeSQL(randomid),
         function(response) {
-            if (response && response.status && response.rows && response.rows.length > 0) {
-                callback(true);
-            } else {
-                callback(false);
-            }
+            callback(response && response.status && response.rows && response.rows.length > 0);
         }
     );
 }
@@ -154,220 +82,165 @@ function isTxStored(txid, callback) {
 function saveMessageToDb(message) {
     MDS.sql(
         'INSERT OR IGNORE INTO messages ' +
-        '(ref, type, product, size, amount, currency, delivery, shipping, message, ' +
-        'timestamp, txid, read, direction, buyerPublicKey, buyerAddress, vendorPublicKey, vendorAddress) ' +
+        '(randomid, ref, type, product, size, amount, currency, delivery, shipping, message, ' +
+        'timestamp, coinid, read, direction, buyerPublicKey, buyerAddress, vendorPublicKey, vendorAddress) ' +
         'VALUES (' +
+        escapeSQL(message.randomid || generateRandomId()) + ', ' +
         escapeSQL(message.ref || '') + ', ' + escapeSQL(message.type || 'ORDER') + ', ' +
         escapeSQL(message.product || '') + ', ' + escapeSQL(message.size || '') + ', ' +
         escapeSQL(message.amount || '') + ', ' + escapeSQL(message.currency || '') + ', ' +
         escapeSQL(message.delivery || '') + ', ' + escapeSQL(message.shipping || '') + ', ' +
         escapeSQL(message.message || '') + ', ' + (message.timestamp || Date.now()) + ', ' +
-        escapeSQL(message.txid || '') + ', ' + (message.read ? 1 : 0) + ', ' +
+        escapeSQL(message.coinid || '') + ', ' + (message.read ? 1 : 0) + ', ' +
         escapeSQL(message.direction || 'sent') + ', ' +
         escapeSQL(message.buyerPublicKey || '') + ', ' + escapeSQL(message.buyerAddress || '') + ', ' +
         escapeSQL(message.vendorPublicKey || '') + ', ' + escapeSQL(message.vendorAddress || '') + ')',
         function(response) {
             if (response && response.status) {
-                console.log('SVC saved msg to DB: ' + (message.ref || 'unknown'));
+                console.log('SVC shop: saved msg to DB:', message.ref || message.randomid);
             }
         }
     );
 }
 
-function saveMessagesToFile(messages) {
-    saveFileAsync(MESSAGES_FILE_KEY, JSON.stringify(messages));
-}
-
-function appendMessageToFile(message) {
-    loadFile(MESSAGES_FILE_KEY).then(function(data) {
-        let messages = [];
-        if (data) {
-            try {
-                let parsed = typeof data === 'string' ? JSON.parse(data) : data;
-                if (Array.isArray(parsed)) messages = parsed;
-            } catch (e) {
-                messages = [];
-            }
-        }
-        let exists = false;
-        for (let i = 0; i < messages.length; i++) {
-            if (messages[i].ref === message.ref && messages[i].txid === message.txid) {
-                exists = true;
-                break;
-            }
-        }
-        if (!exists) {
-            messages.unshift(message);
-            saveMessagesToFile(messages);
-            console.log('SVC appended msg to file: ' + (message.ref || 'unknown') + ', total: ' + messages.length);
-        }
-    });
-}
-
-function saveMessageBoth(message) {
-    saveMessageToDb(message);
-    appendMessageToFile(message);
-}
-
-MDS.init(function(msg) {
-    if (msg.event === 'inited') {
-        console.log('SVC shop: MDS inited');
-        loadFile(CONFIG_FILE_KEY).then(function(data) {
-            if (data) {
-                try {
-                    config = typeof data === 'string' ? JSON.parse(data) : data;
-                    console.log('SVC shop: config loaded, buyerInbox: ' + (config.buyerInboxAddress ? config.buyerInboxAddress.substring(0, 20) + '...' : 'none'));
-                } catch (e) {
-                    config = null;
-                }
-            }
-            if (!config) {
-                console.log('SVC shop: no config file found, will read from VENDOR_CONFIG');
-            }
-            initDatabase(function(ok) {
-                if (ok && config && config.buyerInboxAddress) {
-                    MDS.cmd('coinnotify action:add address:' + config.buyerInboxAddress, function(resp) {
-                        console.log('SVC coinnotify registered: ' + JSON.stringify(resp));
-                    });
-                }
-                console.log('SVC shop: service ready');
-            });
-        });
-    }
-
-    if (msg.event === 'NOTIFYCOIN') {
-        if (!config) return;
-        let coin = msg.data && msg.data.coin;
-        if (!coin) return;
-        let addr = coin.address || (coin.state && coin.state.address);
-        if (addr !== config.buyerInboxAddress) return;
-
-        let state99 = getState99Data(coin.state);
-        if (!state99) return;
-
-        let txid = coin.txid || coin.txnid || coin.coinid || '';
-        isTxStored(txid, function(stored) {
-            if (stored) return;
-            decryptAndStore(txid, state99, coin.state, 'received');
-        });
-    }
-
-    if (msg.event === 'MDS_TIMER_10SECONDS') {
-        if (!config || !config.buyerInboxAddress) {
-            loadFile(CONFIG_FILE_KEY).then(function(data) {
-                if (!data) return;
-                try {
-                    let parsed = typeof data === 'string' ? JSON.parse(data) : data;
-                    if (parsed && parsed.buyerInboxAddress && (!config || config.buyerInboxAddress !== parsed.buyerInboxAddress)) {
-                        config = parsed;
-                        console.log('SVC shop: config updated, buyerInbox: ' + config.buyerInboxAddress.substring(0, 20) + '...');
-                        MDS.cmd('coinnotify action:add address:' + config.buyerInboxAddress, function(resp) {
-                            console.log('SVC coinnotify registered: ' + JSON.stringify(resp));
-                        });
-                    }
-                } catch (e) {}
-            });
-        }
-        scanForNewMessages();
-    }
-});
-
-function decryptAndStore(txid, stateData, rawState, direction) {
+// ChainMail pattern: Try to decrypt, if successful the message is for us
+function tryDecryptMessage(coinid, stateData, callback) {
     let cleanData = stateData;
     if (cleanData && cleanData.startsWith('0x')) cleanData = cleanData.substring(2);
 
     MDS.cmd('maxmessage action:decrypt data:' + cleanData, function(response) {
-        let decrypted = null;
-        if (response && response.status) {
-            try {
-                let hexData = response.response && response.response.message && response.response.message.data
-                    ? response.response.message.data
-                    : (response.response && response.response.data ? response.response.data : null);
-                if (hexData) {
-                    if (hexData.startsWith('0x')) hexData = hexData.substring(2);
-                    let jsonStr = hexToText(hexData);
-                    decrypted = JSON.parse(jsonStr);
-                    if (response.response && response.response.message && response.response.message.mxpublickey) {
-                        decrypted._senderPublicKey = response.response.message.mxpublickey;
-                    }
-                }
-            } catch (e) {
-                console.log('SVC decrypt parse error: ' + e.message);
-            }
-        }
-
-        if (!decrypted) {
-            console.log('SVC: could not decrypt UTXO ' + txid.substring(0, 20));
+        if (!response || !response.status) {
+            callback(null); // Not for us
             return;
         }
 
-        console.log('SVC decrypted: ' + JSON.stringify({ type: decrypted.type, ref: decrypted.ref }));
+        // Check if decryption was valid (ChainMail pattern)
+        let valid = response.response && response.response.message && response.response.message.valid;
+        if (!valid) {
+            callback(null); // Not for us
+            return;
+        }
+
+        try {
+            let hexData = response.response.message.data;
+            if (!hexData) {
+                callback(null);
+                return;
+            }
+            if (hexData.startsWith('0x')) hexData = hexData.substring(2);
+            let jsonStr = hexToText(hexData);
+            let decrypted = JSON.parse(jsonStr);
+            
+            // Attach sender's public key from decryption response
+            decrypted._senderPublicKey = response.response.message.mxpublickey || null;
+            
+            callback(decrypted);
+        } catch (e) {
+            console.log('SVC shop: decrypt parse error:', e.message);
+            callback(null);
+        }
+    });
+}
+
+function processDecryptedMessage(coinid, decrypted, direction) {
+    // Check for duplicate using randomid (ChainMail pattern)
+    let randomid = decrypted.randomid || (decrypted.ref + '_' + decrypted.timestamp);
+    
+    isMessageStored(randomid, function(stored) {
+        if (stored) {
+            console.log('SVC shop: message already stored, skipping:', randomid);
+            return;
+        }
+
+        console.log('SVC shop: decrypted message:', JSON.stringify({ type: decrypted.type, ref: decrypted.ref }));
 
         if (decrypted.type === 'REPLY') {
+            // Vendor reply to buyer
             let message = {
                 id: 'svc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                randomid: randomid,
                 ref: decrypted.ref || 'REPLY-' + Date.now(),
                 type: 'REPLY',
                 subject: 'Reply: ' + (decrypted.ref || 'Order'),
                 product: decrypted.originalOrder || '',
                 message: decrypted.message || '',
                 timestamp: decrypted.timestamp || Date.now(),
-                txid: txid,
+                coinid: coinid,
                 read: false,
                 direction: 'received',
                 vendorPublicKey: decrypted.vendorPublicKey || decrypted._senderPublicKey || null,
                 vendorAddress: decrypted.vendorAddress || null
             };
-            saveMessageBoth(message);
-        } else {
-            let message = {
-                id: 'svc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-                ref: decrypted.ref || '',
-                type: decrypted.type || 'ORDER',
-                product: decrypted.product || '',
-                size: decrypted.size || '',
-                amount: decrypted.amount || '',
-                currency: decrypted.currency || '',
-                delivery: decrypted.delivery || '',
-                shipping: decrypted.shipping || '',
-                timestamp: decrypted.timestamp || Date.now(),
-                txid: txid,
-                read: true,
-                direction: direction
-            };
-            saveMessageBoth(message);
+            saveMessageToDb(message);
         }
+        // Note: We don't store our own sent orders here - that's handled by app.js
     });
 }
 
 function scanForNewMessages() {
-    if (!config) return;
-    let addresses = [];
-    if (config.buyerInboxAddress) addresses.push(config.buyerInboxAddress);
-    if (config.vendorAddress) addresses.push(config.vendorAddress);
+    // ChainMail pattern: Query coins at the fixed MINIMERCH_ADDRESS
+    MDS.cmd('coins address:' + MINIMERCH_ADDRESS, function(response) {
+        if (!response || !response.status || !response.response) return;
+        
+        let coins = response.response;
+        if (typeof coins === 'string') {
+            try { coins = JSON.parse(coins); } catch (e) { return; }
+        }
+        if (!Array.isArray(coins)) return;
 
-    if (addresses.length === 0) return;
+        console.log('SVC shop: found', coins.length, 'coins at MINIMERCH_ADDRESS');
 
-    addresses.forEach(function(addr) {
-        MDS.cmd('coins address:' + addr, function(response) {
-            if (!response || !response.status || !response.response) return;
-            let coins = response.response;
-            if (typeof coins === 'string') {
-                try { coins = JSON.parse(coins); } catch (e) { return; }
-            }
-            if (!Array.isArray(coins)) return;
+        coins.forEach(function(coin) {
+            let state99 = getState99Data(coin.state);
+            if (!state99) return;
 
-            coins.forEach(function(coin) {
-                let state99 = getState99Data(coin.state);
-                if (!state99) return;
-                let txid = coin.txid || coin.txnid || coin.coinid || '';
-                isTxStored(txid, function(stored) {
-                    if (!stored) {
-                        let direction = (addr === config.buyerInboxAddress) ? 'received' : 'sent';
-                        decryptAndStore(txid, state99, coin.state, direction);
-                    }
-                });
+            let coinid = coin.coinid || coin.txid || '';
+            
+            // Try to decrypt - if successful, it's for us
+            tryDecryptMessage(coinid, state99, function(decrypted) {
+                if (decrypted) {
+                    processDecryptedMessage(coinid, decrypted, 'received');
+                }
             });
         });
     });
 }
+
+MDS.init(function(msg) {
+    if (msg.event === 'inited') {
+        console.log('SVC shop: MDS inited (ChainMail protocol)');
+        initDatabase(function(ok) {
+            if (ok) {
+                // Register coinnotify for the fixed MINIMERCH_ADDRESS
+                MDS.cmd('coinnotify action:add address:' + MINIMERCH_ADDRESS, function(resp) {
+                    console.log('SVC shop: coinnotify registered for MINIMERCH_ADDRESS:', JSON.stringify(resp));
+                });
+            }
+            console.log('SVC shop: service ready');
+        });
+    }
+
+    if (msg.event === 'NOTIFYCOIN') {
+        let coin = msg.data && msg.data.coin;
+        if (!coin) return;
+        
+        let addr = coin.address;
+        if (addr !== MINIMERCH_ADDRESS) return;
+
+        let state99 = getState99Data(coin.state);
+        if (!state99) return;
+
+        let coinid = coin.coinid || coin.txid || '';
+        
+        // ChainMail pattern: Try to decrypt, if successful it's for us
+        tryDecryptMessage(coinid, state99, function(decrypted) {
+            if (decrypted) {
+                processDecryptedMessage(coinid, decrypted, 'received');
+            }
+        });
+    }
+
+    if (msg.event === 'MDS_TIMER_10SECONDS') {
+        scanForNewMessages();
+    }
+});

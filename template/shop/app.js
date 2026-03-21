@@ -1,3 +1,6 @@
+// ChainMail-style protocol: Fixed address for ALL messages, encryption-based privacy
+const MINIMERCH_ADDRESS = '0x4D494E494D45524348'; // hex for "MINIMERCH"
+
 const TOKEN_IDS = {
     USDT: '0x7D39745FBD29049BE29850B55A18BF550E4D442F930F86266E34193D89042A90',
     MINIMA: '0x00'
@@ -11,303 +14,36 @@ const SHIPPING_RATES = {
     digital: 0
 };
 
+// CRITICAL: These are replaced by the generator at build time - DO NOT MODIFY
 const OBFUSCATED_CMC_KEY = '';
 const CMC_KEY_SALT = '';
-const PRICE_STORAGE_KEY = 'minima_last_price';
-const MESSAGES_STORAGE_KEY = '/mishop_messages.json';
-const BUYER_ADDRESS_STORAGE_KEY = '/mishop_buyer_address.json';
-const BUYER_IDENTITY_KEY = '/mishop_buyer_identity.json';
-const SHOP_CONFIG_KEY = '/mishop_config.json';
 
 let dbReady = false;
-let mdsSqlWorking = false;
-let fileReady = false;
 let selectedSize = 'eighth';
 let selectedQuantity = 1;
 let selectedPaymentMethod = 'USDT';
 let selectedShipping = 'uk';
 let shippingFee = 5;
-let currentMinimaPrice = 0;
 let mxToUsdRate = 0;
 let vendorAddress = null;
 let vendorPublicKey = null;
 let lastOrderReference = null;
-let isVendorMode = false;
-let buyerAddress = null;
 let buyerPublicKey = null;
 let currentMessages = [];
-let buyerInboxAddress = null;
-let replyPollingInterval = null;
 
 function escapeSQL(val) {
     if (val == null) return 'NULL';
     return "'" + String(val).replace(/'/g, "''") + "'";
 }
 
-function saveFile(key, data) {
-    return new Promise((resolve) => {
-        console.log('saveFile(' + key + '): saving data of length', data ? data.length : 0);
-        if (typeof MDS === 'undefined' || !MDS.file) {
-            console.log('saveFile(' + key + '): MDS not available, using localStorage');
-            localStorage.setItem(key, data);
-            resolve();
-            return;
-        }
-        MDS.file.save(key, data, (response) => {
-            console.log('saveFile(' + key + '): MDS response:', response?.status ? 'success' : 'failed', JSON.stringify(response).substring(0, 100));
-            if (response && response.status) {
-                fileReady = true;
-                resolve();
-            } else {
-                console.error('saveFile(' + key + '): MDS failed, using localStorage fallback');
-                localStorage.setItem(key, data);
-                resolve();
-            }
-        });
-    });
-}
-
-function loadFile(key) {
-    return new Promise((resolve) => {
-        if (typeof MDS === 'undefined' || !MDS.file) {
-            console.log('loadFile(' + key + '): MDS not available, using localStorage');
-            resolve(localStorage.getItem(key));
-            return;
-        }
-        MDS.file.load(key, (response) => {
-            console.log('loadFile(' + key + '): MDS response status:', response?.status, 'response.response type:', typeof response?.response);
-            if (response && response.status && response.response != null) {
-                fileReady = true;
-                // MDS returns wrapper: {action:"LOAD", file:"...", data:"actual content"}
-                // Extract the actual data from response.response.data
-                let data = response.response;
-                console.log('loadFile(' + key + '): raw response.response:', typeof data === 'string' ? data.substring(0, 100) : JSON.stringify(data).substring(0, 100));
-                if (typeof data === 'object' && data !== null && 'data' in data) {
-                    data = data.data;
-                    console.log('loadFile(' + key + '): extracted .data:', typeof data === 'string' ? data.substring(0, 100) : JSON.stringify(data).substring(0, 100));
-                }
-                if (typeof data === 'string') {
-                    console.log('loadFile(' + key + '): returning string of length', data.length);
-                    resolve(data);
-                } else if (data != null) {
-                    try {
-                        const str = JSON.stringify(data);
-                        console.log('loadFile(' + key + '): returning stringified object of length', str.length);
-                        resolve(str);
-                    } catch (e) {
-                        console.log('loadFile(' + key + '): stringify failed, returning null');
-                        resolve(null);
-                    }
-                } else {
-                    console.log('loadFile(' + key + '): data is null after extraction');
-                    resolve(null);
-                }
-            } else {
-                console.log('loadFile(' + key + '): MDS load failed/unavailable, response:', JSON.stringify(response).substring(0, 200));
-                const local = localStorage.getItem(key);
-                console.log('loadFile(' + key + '): localStorage fallback:', local ? 'found ' + local.length + ' chars' : 'null');
-                resolve(local);
-            }
-        });
-    });
-}
-
-async function initDB() {
-    if (dbReady) return;
-    try {
-        await MDS.sql(
-            `CREATE TABLE IF NOT EXISTS messages (` +
-            `id INTEGER PRIMARY KEY AUTOINCREMENT,` +
-            `ref TEXT, type TEXT, product TEXT, size TEXT,` +
-            `amount TEXT, currency TEXT, delivery TEXT, shipping TEXT,` +
-            `message TEXT, timestamp INTEGER, txid TEXT,` +
-            `read INTEGER, direction TEXT,` +
-            `buyerPublicKey TEXT, buyerAddress TEXT,` +
-            `vendorPublicKey TEXT, vendorAddress TEXT,` +
-            `UNIQUE(ref, txid))`
-        );
-        await MDS.sql(
-            `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`
-        );
-        await MDS.sql(
-            `CREATE TABLE IF NOT EXISTS sent_orders (` +
-            `ref TEXT PRIMARY KEY, product TEXT, size TEXT,` +
-            `amount TEXT, currency TEXT, delivery TEXT, shipping TEXT,` +
-            `encrypted_data TEXT, sent_at INTEGER,` +
-            `acknowledged INTEGER DEFAULT 0,` +
-            `rebroadcast_count INTEGER DEFAULT 0,` +
-            `last_rebroadcast INTEGER)`
-        );
-        dbReady = true;
-        mdsSqlWorking = true;
-        console.log('DB initialized successfully, mdsSqlWorking = true');
-    } catch (err) {
-        dbReady = true;
-        console.error('DB init error:', err);
-    }
-}
-
-async function saveSetting(key, value) {
-    if (!mdsSqlWorking) {
-        localStorage.setItem('mishop_' + key, value);
-        return;
-    }
-    try {
-        await MDS.sql(`INSERT OR REPLACE INTO settings (key, value) VALUES (${escapeSQL(key)}, ${escapeSQL(value)})`);
-    } catch (err) {
-        console.error('saveSetting error:', err);
-    }
-}
-
-async function loadSetting(key) {
-    if (!mdsSqlWorking) {
-        return localStorage.getItem('mishop_' + key);
-    }
-    try {
-        const resp = await MDS.sql(`SELECT value FROM settings WHERE key = ${escapeSQL(key)}`);
-        if (resp && resp.status && resp.rows && resp.rows.length > 0) {
-            return resp.rows[0].value;
-        }
-    } catch (err) {
-        console.error('loadSetting error:', err);
-    }
-    return null;
-}
-
-async function saveMessageToDb(message) {
-    if (typeof MDS === 'undefined') return;
-    try {
-        await MDS.sql(
-            `INSERT OR REPLACE INTO messages ` +
-            `(ref, type, product, size, amount, currency, delivery, shipping, message, ` +
-            `timestamp, txid, read, direction, buyerPublicKey, buyerAddress, vendorPublicKey, vendorAddress) ` +
-            `VALUES (` +
-            `${escapeSQL(message.ref || '')}, ${escapeSQL(message.type || 'ORDER')}, ` +
-            `${escapeSQL(message.product || '')}, ${escapeSQL(message.size || '')}, ` +
-            `${escapeSQL(message.amount || '')}, ${escapeSQL(message.currency || '')}, ` +
-            `${escapeSQL(message.delivery || '')}, ${escapeSQL(message.shipping || '')}, ` +
-            `${escapeSQL(message.message || '')}, ${message.timestamp || Date.now()}, ` +
-            `${escapeSQL(message.txid || '')}, ${message.read ? 1 : 0}, ` +
-            `${escapeSQL(message.direction || 'sent')}, ` +
-            `${escapeSQL(message.buyerPublicKey || '')}, ${escapeSQL(message.buyerAddress || '')}, ` +
-            `${escapeSQL(message.vendorPublicKey || '')}, ${escapeSQL(message.vendorAddress || '')})`
-        );
-    } catch (err) {
-        console.error('saveMessageToDb error:', err);
-    }
-}
-
-async function loadMessagesFromDb() {
-    if (typeof MDS === 'undefined') {
-        const data = localStorage.getItem('mishop_messages');
-        return data ? JSON.parse(data) : [];
-    }
-    try {
-        const resp = await MDS.sql(`SELECT * FROM messages ORDER BY timestamp DESC`);
-        if (resp && resp.status && resp.rows) {
-            return resp.rows.map(row => ({
-                id: row.id,
-                ref: row.ref,
-                type: row.type,
-                product: row.product,
-                size: row.size,
-                amount: row.amount,
-                currency: row.currency,
-                delivery: row.delivery,
-                shipping: row.shipping,
-                message: row.message,
-                timestamp: row.timestamp,
-                txid: row.txid,
-                read: !!row.read,
-                direction: row.direction,
-                buyerPublicKey: row.buyerPublicKey,
-                buyerAddress: row.buyerAddress,
-                vendorPublicKey: row.vendorPublicKey,
-                vendorAddress: row.vendorAddress
-            }));
-        }
-    } catch (err) {
-        console.error('loadMessagesFromDb error:', err);
-    }
-    return [];
-}
-
-async function saveSentOrder(order) {
-    if (typeof MDS === 'undefined') return;
-    try {
-        await MDS.sql(
-            `INSERT OR REPLACE INTO sent_orders ` +
-            `(ref, product, size, amount, currency, delivery, shipping, encrypted_data, ` +
-            `sent_at, acknowledged, rebroadcast_count, last_rebroadcast) ` +
-            `VALUES (` +
-            `${escapeSQL(order.ref || '')}, ${escapeSQL(order.product || '')}, ` +
-            `${escapeSQL(order.size || '')}, ${escapeSQL(order.amount || '')}, ` +
-            `${escapeSQL(order.currency || '')}, ${escapeSQL(order.delivery || '')}, ` +
-            `${escapeSQL(order.shipping || '')}, ${escapeSQL(order.encrypted_data || '')}, ` +
-            `${order.sent_at || Date.now()}, ${order.acknowledged ? 1 : 0}, ` +
-            `${order.rebroadcast_count || 0}, ` +
-            `${order.last_rebroadcast != null ? order.last_rebroadcast : 'NULL'})`
-        );
-    } catch (err) {
-        console.error('saveSentOrder error:', err);
-    }
-}
-
-async function loadUnacknowledgedOrders() {
-    if (typeof MDS === 'undefined') return [];
-    try {
-        const resp = await MDS.sql(`SELECT * FROM sent_orders WHERE acknowledged = 0 ORDER BY sent_at ASC`);
-        if (resp && resp.status && resp.rows) {
-            return resp.rows.map(row => ({
-                ref: row.ref,
-                product: row.product,
-                size: row.size,
-                amount: row.amount,
-                currency: row.currency,
-                delivery: row.delivery,
-                shipping: row.shipping,
-                encrypted_data: row.encrypted_data,
-                sent_at: row.sent_at,
-                acknowledged: !!row.acknowledged,
-                rebroadcast_count: row.rebroadcast_count,
-                last_rebroadcast: row.last_rebroadcast
-            }));
-        }
-    } catch (err) {
-        console.error('loadUnacknowledgedOrders error:', err);
-    }
-    return [];
-}
-
-async function acknowledgeOrder(ref) {
-    if (typeof MDS === 'undefined') return;
-    try {
-        await MDS.sql(`UPDATE sent_orders SET acknowledged = 1 WHERE ref = ${escapeSQL(ref)}`);
-    } catch (err) {
-        console.error('acknowledgeOrder error:', err);
-    }
-}
-
-async function updateRebroadcastCount(ref) {
-    if (typeof MDS === 'undefined') return;
-    try {
-        await MDS.sql(
-            `UPDATE sent_orders SET rebroadcast_count = rebroadcast_count + 1, ` +
-            `last_rebroadcast = ${Date.now()} WHERE ref = ${escapeSQL(ref)}`
-        );
-    } catch (err) {
-        console.error('updateRebroadcastCount error:', err);
-    }
+function generateRandomId() {
+    return Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
 }
 
 function decodeObfuscated(str, salt) {
     const decoded = atob(str);
     const obfuscated = decoded.substring(0, decoded.length - salt.length);
     return obfuscated.split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ salt.charCodeAt(i % salt.length))).join('');
-}
-
-function URLencodeString(str) {
-    return encodeURIComponent(str).split("'").join("%27");
 }
 
 function generateOrderReference(productName) {
@@ -324,7 +60,6 @@ function generateOrderReference(productName) {
 function getDecodedPublicKey() {
     const key = VENDOR_CONFIG.vendorPublicKey;
     if (key && key.startsWith && key.startsWith('Mx')) {
-        console.log('Using vendorPublicKey for encryption:', key.substring(0, 20) + '...');
         return key;
     }
     return null;
@@ -346,211 +81,130 @@ function hexToText(hex) {
     return text;
 }
 
-function decryptMessage(encryptedData) {
-    return new Promise((resolve) => {
-        let cleanData = encryptedData;
-        if (cleanData && cleanData.startsWith('0x')) {
-            cleanData = cleanData.substring(2);
-        }
-
-        MDS.cmd('maxmessage action:decrypt data:' + cleanData, (response) => {
-            console.log('Decrypt response:', JSON.stringify(response));
-
-            if (response && response.status) {
-                try {
-                    let hexData = response.response?.message?.data || response.response?.data;
-                    if (hexData) {
-                        if (hexData.startsWith('0x')) {
-                            hexData = hexData.substring(2);
-                        }
-                        const jsonStr = hexToText(hexData);
-                        const data = JSON.parse(jsonStr);
-                        data._senderPublicKey = response.response?.message?.mxpublickey || response.response?.mxpublickey || null;
-                        resolve(data);
-                        return;
-                    }
-                } catch (e) {
-                    console.error('Failed to parse decrypted data:', e);
-                }
-            }
-
-            console.log('Decryption fallback triggered, attempting direct parse');
-            try {
-                const jsonStr = hexToText(cleanData);
-                const data = JSON.parse(jsonStr);
-                console.log('Parsed as plain JSON:', data);
-                resolve(data);
-            } catch (e) {
-                console.log('Fallback parse failed');
-                resolve(null);
-            }
-        });
-    });
-}
-
 function getState99Data(state) {
     if (!state) return null;
-    
     if (Array.isArray(state)) {
         for (const entry of state) {
-            if (entry && entry.port === 99 && entry.data) {
-                return entry.data;
-            }
+            if (entry && entry.port === 99 && entry.data) return entry.data;
         }
         return null;
     }
-    
     if (typeof state === 'object') {
         if (state[99]) return state[99];
-        for (const key in state) {
-            if (state[key] && typeof state[key] === 'object' && state[key].port === 99) {
-                return state[key].data;
-            }
-        }
     }
-    
     return null;
 }
 
-async function saveMessages(messages) {
-    const data = JSON.stringify(messages);
-    await saveFile(MESSAGES_STORAGE_KEY, data);
-    console.log('saveMessages: saved', messages.length, 'messages to file');
-}
+// ============ DATABASE FUNCTIONS (SQL only, no MDS.file) ============
 
-async function loadMessages() {
-    const data = await loadFile(MESSAGES_STORAGE_KEY);
-    if (!data || data === 'undefined' || data === 'null') {
-        console.log('loadMessages: no file data, trying SQL');
-        return loadMessagesFromDb();
-    }
+async function initDB() {
+    if (dbReady) return;
     try {
-        let msgs;
-        console.log('loadMessages: raw data type:', typeof data, 'preview:', typeof data === 'string' ? data.substring(0, 80) : (Array.isArray(data) ? '[array len:'+data.length+']' : typeof data));
-        if (typeof data === 'string') {
-            try { msgs = JSON.parse(data); } catch (e) { msgs = null; }
-        } else if (data !== null && typeof data === 'object') {
-            if (Array.isArray(data)) {
-                msgs = data;
-            } else {
-                const extracted = Object.values(data).find(v => Array.isArray(v));
-                msgs = extracted || data;
-            }
-        } else {
-            msgs = null;
-        }
-        console.log('loadMessages: parsed type:', typeof msgs, 'isArray:', Array.isArray(msgs), 'len:', Array.isArray(msgs) ? msgs.length : 'N/A');
-        if (!Array.isArray(msgs)) {
-            console.error('loadMessages: not an array, falling back to SQL');
-            return loadMessagesFromDb();
-        }
-        console.log('loadMessages: loaded', msgs.length, 'messages from file');
-        return msgs;
-    } catch (e) {
-        console.error('loadMessages: parse error, falling back to SQL:', e);
-        return loadMessagesFromDb();
+        await MDS.sql(
+            `CREATE TABLE IF NOT EXISTS messages (` +
+            `id INTEGER PRIMARY KEY AUTOINCREMENT,` +
+            `randomid TEXT UNIQUE,` +
+            `ref TEXT, type TEXT, product TEXT, size TEXT,` +
+            `amount TEXT, currency TEXT, delivery TEXT, shipping TEXT,` +
+            `message TEXT, timestamp INTEGER, coinid TEXT,` +
+            `read INTEGER, direction TEXT,` +
+            `buyerPublicKey TEXT, vendorPublicKey TEXT, vendorAddress TEXT)`
+        );
+        await MDS.sql(
+            `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`
+        );
+        dbReady = true;
+        console.log('Shop DB initialized');
+    } catch (err) {
+        console.error('Shop DB init error:', err);
     }
 }
 
-async function recoverMessagesFromChain() {
-    console.log('=== RECOVERING ALL MESSAGES FROM CHAIN ===');
-    const allMessages = [];
-    
-    const addresses = [];
-    if (vendorAddress) addresses.push({ addr: vendorAddress, label: 'vendor' });
-    if (buyerInboxAddress) addresses.push({ addr: buyerInboxAddress, label: 'buyer' });
-    
-    for (const { addr, label } of addresses) {
-        try {
-            const result = await new Promise((resolve) => {
-                MDS.cmd('coins address:' + addr, resolve);
-            });
-            
-            if (!result || !result.status || !Array.isArray(result.response)) continue;
-            
-            console.log(`Recover: checking ${result.response.length} UTXOs at ${label} address`);
-            
-            for (const coin of result.response) {
-                const coinTxid = coin.txid || coin.txnid || coin.coinid || '';
-                const stateData = getState99Data(coin.state);
-                if (!stateData) continue;
-                
-                try {
-                    const decrypted = await decryptMessage(stateData);
-                    if (!decrypted) continue;
-                    
-                    const isReply = decrypted.type === 'REPLY';
-                    
-                    const existing = allMessages.find(m => m.txid === coinTxid);
-                    if (existing) continue;
-                    
-                    if (isReply) {
-                        allMessages.push({
-                            id: Date.now().toString() + '_' + Math.random(),
-                            ref: decrypted.ref || 'REPLY-' + Date.now(),
-                            type: 'REPLY',
-                            subject: 'Reply: ' + (decrypted.ref || 'Order'),
-                            product: decrypted.originalOrder || '',
-                            message: decrypted.message || '',
-                            timestamp: decrypted.timestamp || Date.now(),
-                            txid: coinTxid,
-                            read: false,
-                            direction: 'received',
-                            vendorPublicKey: decrypted.vendorPublicKey || decrypted._senderPublicKey || null,
-                            vendorAddress: decrypted.vendorAddress || null
-                        });
-                    } else {
-                        allMessages.push({
-                            id: Date.now().toString() + '_' + Math.random(),
-                            ref: decrypted.ref || '',
-                            type: decrypted.type || 'ORDER',
-                            product: decrypted.product || '',
-                            size: decrypted.size || '',
-                            amount: decrypted.amount || '',
-                            currency: decrypted.currency || '',
-                            delivery: decrypted.delivery || '',
-                            shipping: decrypted.shipping || '',
-                            timestamp: decrypted.timestamp || Date.now(),
-                            txid: coinTxid,
-                            read: true,
-                            direction: 'sent'
-                        });
-                    }
-                } catch (e) {
-                    console.error('Recover: failed to process coin', coinTxid.substring(0, 20), e);
-                }
-            }
-        } catch (e) {
-            console.error('Recover: failed to query', label, 'address', e);
-        }
+async function saveSetting(key, value) {
+    try {
+        await MDS.sql(`INSERT OR REPLACE INTO settings (key, value) VALUES (${escapeSQL(key)}, ${escapeSQL(value)})`);
+    } catch (err) {
+        console.error('saveSetting error:', err);
     }
-    
-    console.log('Recover: found', allMessages.length, 'messages from chain');
-    
-    if (allMessages.length > 0) {
-        currentMessages = allMessages;
-        await saveMessages(currentMessages);
-        renderInbox();
-    }
-    
-    return allMessages;
 }
 
-function addMessage(message) {
-    const exists = currentMessages.find(m => m.ref === message.ref && m.txid === message.txid);
-    if (exists) {
-        console.log('Message already exists:', message.ref, message.txid);
-        return;
+async function loadSetting(key) {
+    try {
+        const resp = await MDS.sql(`SELECT value FROM settings WHERE key = ${escapeSQL(key)}`);
+        if (resp && resp.status && resp.rows && resp.rows.length > 0) {
+            return resp.rows[0].value;
+        }
+    } catch (err) {
+        console.error('loadSetting error:', err);
     }
-    
-    currentMessages.unshift(message);
-    saveMessages(currentMessages);
-    saveMessageToDb(message);
-    renderInbox();
-    if (typeof MDS !== 'undefined') {
-        MDS.notify('New message: ' + (message.subject || 'Order'));
+    return null;
+}
+
+async function saveMessageToDb(message) {
+    try {
+        await MDS.sql(
+            `INSERT OR IGNORE INTO messages ` +
+            `(randomid, ref, type, product, size, amount, currency, delivery, shipping, message, ` +
+            `timestamp, coinid, read, direction, buyerPublicKey, vendorPublicKey, vendorAddress) ` +
+            `VALUES (` +
+            `${escapeSQL(message.randomid || generateRandomId())}, ` +
+            `${escapeSQL(message.ref || '')}, ${escapeSQL(message.type || 'ORDER')}, ` +
+            `${escapeSQL(message.product || '')}, ${escapeSQL(message.size || '')}, ` +
+            `${escapeSQL(message.amount || '')}, ${escapeSQL(message.currency || '')}, ` +
+            `${escapeSQL(message.delivery || '')}, ${escapeSQL(message.shipping || '')}, ` +
+            `${escapeSQL(message.message || '')}, ${message.timestamp || Date.now()}, ` +
+            `${escapeSQL(message.coinid || '')}, ${message.read ? 1 : 0}, ` +
+            `${escapeSQL(message.direction || 'sent')}, ` +
+            `${escapeSQL(message.buyerPublicKey || '')}, ` +
+            `${escapeSQL(message.vendorPublicKey || '')}, ${escapeSQL(message.vendorAddress || '')})`
+        );
+    } catch (err) {
+        console.error('saveMessageToDb error:', err);
     }
 }
+
+async function loadMessagesFromDb() {
+    try {
+        const resp = await MDS.sql(`SELECT * FROM messages ORDER BY timestamp DESC`);
+        if (resp && resp.status && resp.rows) {
+            return resp.rows.map(row => ({
+                id: row.id,
+                randomid: row.randomid,
+                ref: row.ref,
+                type: row.type,
+                product: row.product,
+                size: row.size,
+                amount: row.amount,
+                currency: row.currency,
+                delivery: row.delivery,
+                shipping: row.shipping,
+                message: row.message,
+                timestamp: row.timestamp,
+                coinid: row.coinid,
+                read: !!row.read,
+                direction: row.direction,
+                buyerPublicKey: row.buyerPublicKey,
+                vendorPublicKey: row.vendorPublicKey,
+                vendorAddress: row.vendorAddress
+            }));
+        }
+    } catch (err) {
+        console.error('loadMessagesFromDb error:', err);
+    }
+    return [];
+}
+
+async function isMessageStored(randomid) {
+    if (!randomid) return false;
+    try {
+        const resp = await MDS.sql(`SELECT randomid FROM messages WHERE randomid = ${escapeSQL(randomid)}`);
+        return resp && resp.status && resp.rows && resp.rows.length > 0;
+    } catch (err) {
+        return false;
+    }
+}
+
+// ============ ENCRYPTION FUNCTIONS ============
 
 async function encryptMessage(publicKey, data) {
     return new Promise((resolve) => {
@@ -558,8 +212,6 @@ async function encryptMessage(publicKey, data) {
         const hexData = textToHex(jsonStr);
 
         MDS.cmd('maxmessage action:encrypt publickey:' + publicKey + ' data:' + hexData, (response) => {
-            console.log('Encrypt response:', JSON.stringify(response));
-
             if (!response || !response.status) {
                 resolve(null);
                 return;
@@ -575,70 +227,58 @@ async function encryptMessage(publicKey, data) {
 
             resolve({
                 encrypted,
-                buyerPublicKey: message.mxpublickey || response.response?.mxpublickey || '',
-                buyerAddress: message.miniaddress || response.response?.miniaddress || '',
                 senderPublicKey: message.mxpublickey || response.response?.mxpublickey || ''
             });
         });
     });
 }
 
-async function sendEncryptedOrder(orderDetails, callback) {
-    console.log('=== sendEncryptedOrder START ===');
-    
-    if (!vendorPublicKey) {
-        callback(false, "Vendor public key not available", null);
-        return;
-    }
-    
-    try {
-        const encryptResult = await encryptMessage(vendorPublicKey, orderDetails);
-        if (!encryptResult || !encryptResult.encrypted) {
-            console.error('Encryption failed');
-            callback(false, "Encryption failed", null);
-            return;
-        }
-        
-        console.log('Message encrypted successfully');
-        console.log('Buyer PublicKey from encrypt:', encryptResult.buyerPublicKey);
-        console.log('Buyer Address from encrypt:', encryptResult.buyerAddress);
-        
-        const state = {};
-        state[99] = encryptResult.encrypted;
-        
-        const command = 'send address:' + vendorAddress + ' amount:0.0001 tokenid:' + TOKEN_IDS.MINIMA + ' state:' + JSON.stringify(state);
-        console.log('Sending encrypted message via TX:', command);
-        
-        MDS.cmd(command, (response) => {
-            console.log('TX Response:', JSON.stringify(response));
-            if (response && response.status) {
-                const buyerAddress = response.response?.body?.txn?.inputs?.[0]?.miniaddress || encryptResult.buyerAddress;
-                callback(true, { 
-                    txid: response.response?.txnid || 'confirmed',
-                    buyerPublicKey: encryptResult.buyerPublicKey,
-                    buyerAddress: buyerAddress
-                });
-            } else {
-                callback(false, response?.error || 'Transaction failed', null);
+// ChainMail pattern: Try to decrypt, if successful the message is for us
+function tryDecryptMessage(stateData) {
+    return new Promise((resolve) => {
+        let cleanData = stateData;
+        if (cleanData && cleanData.startsWith('0x')) cleanData = cleanData.substring(2);
+
+        MDS.cmd('maxmessage action:decrypt data:' + cleanData, (response) => {
+            if (!response || !response.status) {
+                resolve(null);
+                return;
+            }
+
+            // Check if decryption was valid (ChainMail pattern)
+            let valid = response.response && response.response.message && response.response.message.valid;
+            if (!valid) {
+                resolve(null);
+                return;
+            }
+
+            try {
+                let hexData = response.response.message.data;
+                if (!hexData) {
+                    resolve(null);
+                    return;
+                }
+                if (hexData.startsWith('0x')) hexData = hexData.substring(2);
+                let jsonStr = hexToText(hexData);
+                let decrypted = JSON.parse(jsonStr);
+                
+                // Attach sender's public key from decryption response
+                decrypted._senderPublicKey = response.response.message.mxpublickey || null;
+                
+                resolve(decrypted);
+            } catch (e) {
+                console.error('Decrypt parse error:', e);
+                resolve(null);
             }
         });
-        
-    } catch (error) {
-        console.error('Error sending encrypted order:', error);
-        callback(false, error.message, null);
-    }
+    });
 }
 
 function getMyPublicKey() {
     return new Promise((resolve) => {
         MDS.cmd('maxima action:info', (response) => {
-            console.log('getMyPublicKey (maxima info) response:', JSON.stringify(response));
             if (response.status && response.response && response.response.publickey) {
                 resolve(response.response.publickey);
-                return;
-            }
-            if (response.status && response.response && response.response.message && response.response.message.publickey) {
-                resolve(response.response.message.publickey);
                 return;
             }
             resolve(null);
@@ -646,470 +286,491 @@ function getMyPublicKey() {
     });
 }
 
-function getMyAddress(callback) {
-    MDS.cmd('getaddress', (response) => {
-        console.log('getaddress response:', JSON.stringify(response));
-        if (response.status && response.response) {
-            const address = response.response.address || response.response.miniaddress || response.response;
-            if (address && (address.startsWith('0x') || address.startsWith('Mx'))) {
-                callback(address);
-                return;
-            }
-        }
-        callback(null);
-    });
-}
+// ============ MESSAGE HANDLING ============
 
-async function saveBuyerAddress(address) {
-    if (!address) return;
-    await saveFile(BUYER_ADDRESS_STORAGE_KEY, address);
-}
-
-async function loadBuyerAddress() {
-    const address = await loadFile(BUYER_ADDRESS_STORAGE_KEY);
-    if (address && (address.startsWith('0x') || address.startsWith('Mx'))) {
-        return address;
-    }
-    return null;
-}
-
-async function saveBuyerIdentity(address, publicKey) {
-    if (!address) {
-        console.error('saveBuyerIdentity: no address provided, skipping');
+function addMessage(message) {
+    // Use randomid for deduplication (ChainMail pattern)
+    const randomid = message.randomid || (message.ref + '_' + message.timestamp);
+    const exists = currentMessages.find(m => m.randomid === randomid);
+    if (exists) {
+        console.log('Message already exists:', randomid);
         return;
     }
-    const identity = JSON.stringify({ address, publicKey: publicKey || null });
-    console.log('saveBuyerIdentity: saving address:', address.substring(0, 20) + '...', 'publicKey:', publicKey ? 'yes' : 'null');
-    await saveFile(BUYER_IDENTITY_KEY, identity);
-    console.log('saveBuyerIdentity: saved successfully');
+    
+    message.randomid = randomid;
+    currentMessages.unshift(message);
+    saveMessageToDb(message);
+    renderInbox();
+    
+    if (message.direction === 'received' && typeof MDS !== 'undefined') {
+        MDS.notify('New message: ' + (message.ref || 'Reply'));
+    }
 }
 
-async function loadBuyerIdentity() {
-    const data = await loadFile(BUYER_IDENTITY_KEY);
-    if (!data || data === 'undefined' || data === 'null') {
-        console.log('loadBuyerIdentity: no data found, will create new address');
-        return null;
-    }
-    try {
-        let identity;
-        if (typeof data === 'string') {
-            identity = JSON.parse(data);
-        } else if (typeof data === 'object' && data !== null) {
-            identity = data;
-        } else {
-            console.error('loadBuyerIdentity: unexpected data type:', typeof data);
-            return null;
-        }
-        if (identity && identity.address && (identity.address.startsWith('0x') || identity.address.startsWith('Mx'))) {
-            console.log('loadBuyerIdentity: loaded existing identity, address:', identity.address.substring(0, 20) + '...');
-            return identity;
-        }
-    } catch (e) {
-        console.error('loadBuyerIdentity: parse error', e, 'data:', String(data).substring(0, 100));
-    }
-    return null;
-}
-
-async function saveShopConfig() {
-    const config = {
-        buyerAddress: buyerAddress || null,
-        buyerPublicKey: buyerPublicKey || null,
-        buyerInboxAddress: buyerInboxAddress || null,
-        vendorAddress: vendorAddress || null,
-        vendorPublicKey: vendorPublicKey || null
-    };
-    await saveFile(SHOP_CONFIG_KEY, JSON.stringify(config));
-    console.log('saveShopConfig: saved config to file');
-}
-
-async function loadShopConfig() {
-    const data = await loadFile(SHOP_CONFIG_KEY);
-    if (!data) return null;
-    try {
-        let config = typeof data === 'string' ? JSON.parse(data) : data;
-        if (config && typeof config === 'object') {
-            console.log('loadShopConfig: loaded from file');
-            return config;
-        }
-    } catch (e) {
-        console.error('loadShopConfig: parse error', e);
-    }
-    return null;
-}
-
-async function getOrCreateBuyerAddress(preloadedIdentity) {
-    const savedIdentity = preloadedIdentity || await loadBuyerIdentity();
-    if (savedIdentity && savedIdentity.address) {
-        return savedIdentity.address;
-    }
-    const savedAddress = await loadBuyerAddress();
-    if (savedAddress) {
-        return savedAddress;
-    }
-    return new Promise((resolve) => {
-        getMyAddress((address) => {
-            if (address) {
-                saveBuyerAddress(address);
-            }
-            resolve(address || null);
-        });
-    });
-}
-
-function processIncomingMessage(coin) {
+async function processReplyMessage(coin) {
+    const coinid = coin.coinid || coin.txid || '';
     const stateData = getState99Data(coin.state);
     if (!stateData) return;
     
-    console.log('Processing incoming message...');
+    console.log('Processing potential reply message...');
     
-    decryptMessage(stateData).then((decrypted) => {
-        if (decrypted) {
-            console.log('Decrypted message:', JSON.stringify(decrypted));
-            
-            const message = {
-                id: Date.now().toString(),
-                ref: decrypted.ref || '',
-                type: decrypted.type || 'ORDER',
-                product: decrypted.product || '',
-                size: decrypted.size || '',
-                amount: decrypted.amount || '',
-                currency: decrypted.currency || '',
-                delivery: decrypted.delivery || '',
-                shipping: decrypted.shipping || '',
-                timestamp: decrypted.timestamp || Date.now(),
-                txid: coin.txid || '',
-                read: false,
-                direction: 'received'
-            };
-            
-            addMessage(message);
-        } else {
-            console.log('Could not decrypt message (might not be for us)');
-        }
-    });
-}
-
-function processReplyMessage(coin) {
-    const coinTxid = coin.txid || coin.txnid || coin.coinid || '';
-    console.log('processReplyMessage: coin txid =', coinTxid.substring(0, 20), 'address =', coin.address);
-    
-    const stateData = getState99Data(coin.state);
-    if (!stateData) {
-        console.log('processReplyMessage: no state[99] data found');
+    const decrypted = await tryDecryptMessage(stateData);
+    if (!decrypted) {
+        console.log('Could not decrypt (not for us)');
         return;
     }
     
-    console.log('Processing reply message, state[99] length:', stateData.length);
+    if (decrypted.type !== 'REPLY') {
+        console.log('Not a reply message, ignoring');
+        return;
+    }
     
-    decryptMessage(stateData).then((decrypted) => {
-        if (decrypted) {
-            console.log('Decrypted reply:', JSON.stringify(decrypted));
-            
-            if (decrypted.type !== 'REPLY') {
-                console.log('Not a reply message, ignoring');
+    // Check for duplicate
+    const randomid = decrypted.randomid || (decrypted.ref + '_' + decrypted.timestamp);
+    const stored = await isMessageStored(randomid);
+    if (stored) {
+        console.log('Reply already stored, skipping:', randomid);
+        return;
+    }
+    
+    console.log('Decrypted reply:', JSON.stringify(decrypted));
+    
+    const message = {
+        id: Date.now().toString(),
+        randomid: randomid,
+        ref: decrypted.ref || 'REPLY-' + Date.now(),
+        type: 'REPLY',
+        subject: 'Reply: ' + (decrypted.ref || 'Order'),
+        product: decrypted.originalOrder || '',
+        message: decrypted.message || '',
+        timestamp: decrypted.timestamp || Date.now(),
+        coinid: coinid,
+        read: false,
+        direction: 'received',
+        vendorPublicKey: decrypted.vendorPublicKey || decrypted._senderPublicKey || null,
+        vendorAddress: decrypted.vendorAddress || null
+    };
+    
+    addMessage(message);
+}
+
+async function scanForReplies() {
+    // ChainMail pattern: Query coins at the fixed MINIMERCH_ADDRESS
+    return new Promise((resolve) => {
+        MDS.cmd('coins address:' + MINIMERCH_ADDRESS, async (response) => {
+            if (!response || !response.status || !response.response) {
+                resolve();
                 return;
             }
             
-            const message = {
-                id: Date.now().toString(),
-                ref: decrypted.ref || 'REPLY-' + Date.now(),
-                type: 'REPLY',
-                subject: 'Reply: ' + (decrypted.ref || 'Order'),
-                product: decrypted.originalOrder || '',
-                message: decrypted.message || '',
-                timestamp: decrypted.timestamp || Date.now(),
-                txid: coinTxid,
-                read: false,
-                direction: 'received',
-                vendorPublicKey: decrypted.vendorPublicKey || decrypted._senderPublicKey || null,
-                vendorAddress: decrypted.vendorAddress || null
-            };
-            
-            console.log('Vendor info for reply:', { publicKey: message.vendorPublicKey, address: message.vendorAddress });
-            
-            addMessage(message);
-            
-            if (decrypted.ref) {
-                acknowledgeOrder(decrypted.ref);
+            let coins = response.response;
+            if (typeof coins === 'string') {
+                try { coins = JSON.parse(coins); } catch (e) { resolve(); return; }
+            }
+            if (!Array.isArray(coins)) {
+                resolve();
+                return;
+            }
+
+            console.log('Shop: scanning', coins.length, 'coins at MINIMERCH_ADDRESS');
+
+            for (const coin of coins) {
+                const state99 = getState99Data(coin.state);
+                if (!state99) continue;
+                
+                await processReplyMessage(coin);
             }
             
-            if (typeof MDS !== 'undefined') {
-                MDS.notify('New reply: ' + (decrypted.ref || 'Order'));
+            resolve();
+        });
+    });
+}
+
+// ============ BUYER REPLY TO VENDOR ============
+
+let buyerReplyTarget = null;
+
+function openBuyerReplyModal(msg) {
+    buyerReplyTarget = msg;
+    
+    document.getElementById('buyer-reply-ref').textContent = 'Re: ' + (msg.ref || 'Order');
+    document.getElementById('buyer-reply-message').value = '';
+    document.getElementById('buyer-reply-status').textContent = '';
+    document.getElementById('buyer-reply-status').className = 'reply-status';
+    document.getElementById('buyer-send-reply-btn').disabled = false;
+    document.getElementById('buyer-send-reply-btn').textContent = '📤 Send Reply';
+    
+    document.getElementById('buyer-reply-modal').classList.remove('hidden');
+}
+
+function closeBuyerReplyModal() {
+    document.getElementById('buyer-reply-modal').classList.add('hidden');
+    buyerReplyTarget = null;
+}
+
+async function sendBuyerReply() {
+    if (!buyerReplyTarget) return;
+    
+    const messageText = document.getElementById('buyer-reply-message').value.trim();
+    const statusEl = document.getElementById('buyer-reply-status');
+    const sendBtn = document.getElementById('buyer-send-reply-btn');
+    
+    if (!messageText) {
+        statusEl.textContent = 'Please enter a message';
+        statusEl.className = 'reply-status error';
+        return;
+    }
+    
+    const msg = buyerReplyTarget;
+    
+    if (!msg.vendorPublicKey) {
+        statusEl.textContent = 'Missing vendor public key';
+        statusEl.className = 'reply-status error';
+        return;
+    }
+    
+    statusEl.textContent = 'Encrypting reply...';
+    statusEl.className = 'reply-status pending';
+    sendBtn.disabled = true;
+    
+    try {
+        if (!buyerPublicKey) {
+            buyerPublicKey = await getMyPublicKey();
+        }
+        
+        const replyPayload = {
+            type: 'BUYER_REPLY',
+            randomid: generateRandomId(), // ChainMail pattern
+            ref: msg.ref,
+            originalOrder: msg.product || msg.originalOrder || '',
+            message: messageText,
+            timestamp: Date.now(),
+            buyerPublicKey: buyerPublicKey || ''
+        };
+        
+        console.log('Buyer sending reply payload:', replyPayload);
+        
+        const encrypted = await encryptMessage(msg.vendorPublicKey, replyPayload);
+        
+        if (!encrypted || !encrypted.encrypted) {
+            throw new Error('Encryption failed');
+        }
+        
+        statusEl.textContent = 'Sending encrypted reply...';
+        
+        const state = {};
+        state[99] = encrypted.encrypted;
+        
+        // ChainMail pattern: Send to fixed MINIMERCH_ADDRESS
+        const command = 'send address:' + MINIMERCH_ADDRESS + ' amount:0.0001 tokenid:' + TOKEN_IDS.MINIMA + ' state:' + JSON.stringify(state);
+        console.log('Sending buyer reply to MINIMERCH_ADDRESS');
+        
+        MDS.cmd(command, (response) => {
+            console.log('Buyer reply TX Response:', JSON.stringify(response));
+            if (response && response.status) {
+                const txid = response.response?.txnid || 'confirmed';
+                statusEl.textContent = 'Reply sent! TX: ' + txid.substring(0, 20) + '...';
+                statusEl.className = 'reply-status success';
+                sendBtn.textContent = '✓ Sent!';
+                
+                // Save sent message locally
+                const sentMessage = {
+                    id: Date.now().toString(),
+                    randomid: replyPayload.randomid,
+                    ref: msg.ref + '-R',
+                    type: 'BUYER_REPLY',
+                    subject: 'Re: ' + (msg.ref || 'Order'),
+                    product: msg.product || '',
+                    message: messageText,
+                    timestamp: Date.now(),
+                    coinid: txid,
+                    read: true,
+                    direction: 'sent'
+                };
+                addMessage(sentMessage);
+                
+                setTimeout(() => {
+                    closeBuyerReplyModal();
+                }, 2000);
+            } else {
+                statusEl.textContent = 'Failed: ' + (response?.error || 'Transaction failed');
+                statusEl.className = 'reply-status error';
+                sendBtn.disabled = false;
+                sendBtn.textContent = '📤 Send Reply';
             }
+        });
+        
+    } catch (error) {
+        console.error('Error sending buyer reply:', error);
+        statusEl.textContent = 'Error: ' + error.message;
+        statusEl.className = 'reply-status error';
+        sendBtn.disabled = false;
+        sendBtn.textContent = '📤 Send Reply';
+    }
+}
+
+// ============ PAYMENT PROCESSING ============
+
+async function processPayment() {
+    const postalAddress = document.getElementById('postal-address').value.trim();
+    const emailAddress = document.getElementById('email-address').value.trim();
+    const isUnitsMode = PRODUCT.mode === 'units';
+    let productPrice;
+    let sizeLabel;
+    
+    if (isUnitsMode) {
+        productPrice = PRODUCT.pricePerUnit * selectedQuantity;
+        sizeLabel = `${selectedQuantity} unit${selectedQuantity > 1 ? 's' : ''}`;
+    } else {
+        const size = PRODUCT.sizes.find(s => s.id === selectedSize);
+        productPrice = PRODUCT.pricePerGram * size.weight;
+        sizeLabel = `${size.name} (${size.weight}g)`;
+    }
+    
+    const totalPrice = productPrice + shippingFee;
+    
+    let deliveryInfo;
+    if (selectedShipping === 'digital') {
+        if (!emailAddress.includes('@')) {
+            showPaymentStatus('Please enter a valid email address', 'error');
+            return;
+        }
+        deliveryInfo = emailAddress;
+    } else {
+        if (postalAddress.length < 10) {
+            showPaymentStatus('Please enter a complete postal address', 'error');
+            return;
+        }
+        deliveryInfo = postalAddress;
+    }
+    
+    const payBtn = document.getElementById('pay-btn');
+    payBtn.disabled = true;
+    
+    showPaymentStatus('Preparing transaction...', 'pending');
+    
+    try {
+        if (!vendorPublicKey) {
+            showPaymentStatus('Error: Vendor public key not configured', 'error');
+            payBtn.disabled = false;
+            return;
+        }
+
+        // Get buyer's public key if not already fetched
+        if (!buyerPublicKey) {
+            showPaymentStatus('Getting buyer info...', 'pending');
+            buyerPublicKey = await getMyPublicKey();
+            if (!buyerPublicKey) {
+                showPaymentStatus('Error: Could not get buyer public key', 'error');
+                payBtn.disabled = false;
+                return;
+            }
+            console.log('Buyer public key:', buyerPublicKey.substring(0, 20) + '...');
+        }
+        
+        let sendAmount;
+        let tokenName;
+        if (selectedPaymentMethod === 'USDT') {
+            sendAmount = totalPrice;
+            tokenName = 'USDT';
         } else {
-            console.log('Could not decrypt reply (might not be for us)');
+            sendAmount = totalPrice / mxToUsdRate * 1.10;
+            tokenName = 'Minima';
+        }
+        
+        lastOrderReference = generateOrderReference(PRODUCT.name);
+        
+        const orderPayload = {
+            type: 'ORDER',
+            randomid: generateRandomId(), // ChainMail pattern for deduplication
+            ref: lastOrderReference,
+            product: PRODUCT.name,
+            size: sizeLabel,
+            amount: totalPrice.toFixed(2),
+            currency: tokenName,
+            delivery: deliveryInfo,
+            shipping: selectedShipping,
+            timestamp: Date.now(),
+            buyerPublicKey: buyerPublicKey
+        };
+        
+        showPaymentStatus('Encrypting order...', 'pending');
+        console.log('Order payload:', JSON.stringify(orderPayload));
+        
+        const encryptResult = await encryptMessage(vendorPublicKey, orderPayload);
+        
+        if (!encryptResult || !encryptResult.encrypted) {
+            throw new Error('Failed to encrypt order');
+        }
+        
+        showPaymentStatus('Sending encrypted order...', 'pending');
+        
+        const state = {};
+        state[99] = encryptResult.encrypted;
+        
+        // ChainMail pattern: Send to fixed MINIMERCH_ADDRESS
+        const command = 'send address:' + MINIMERCH_ADDRESS + ' amount:0.0001 tokenid:' + TOKEN_IDS.MINIMA + ' state:' + JSON.stringify(state);
+        console.log('Sending order to MINIMERCH_ADDRESS');
+        
+        const orderResponse = await new Promise((resolve) => {
+            MDS.cmd(command, resolve);
+        });
+        
+        if (!orderResponse || !orderResponse.status) {
+            throw new Error(orderResponse?.error || 'Order TX failed');
+        }
+        
+        const orderTxid = orderResponse.response?.txnid || 'confirmed';
+        console.log('Order sent with txid:', orderTxid);
+        
+        // Save sent order locally
+        addMessage({
+            id: Date.now().toString(),
+            randomid: orderPayload.randomid,
+            ref: lastOrderReference,
+            type: 'ORDER',
+            product: PRODUCT.name,
+            size: sizeLabel,
+            amount: totalPrice.toFixed(2),
+            currency: tokenName,
+            delivery: deliveryInfo,
+            shipping: selectedShipping,
+            timestamp: Date.now(),
+            coinid: orderTxid,
+            read: true,
+            direction: 'sent',
+            buyerPublicKey: buyerPublicKey
+        });
+        
+        showPaymentStatus('Sending payment...', 'pending');
+        
+        let payCommand;
+        if (selectedPaymentMethod === 'USDT') {
+            payCommand = 'send address:' + vendorAddress + ' amount:' + sendAmount.toFixed(8) + ' tokenid:' + TOKEN_IDS.USDT;
+        } else {
+            payCommand = 'send address:' + vendorAddress + ' amount:' + sendAmount.toFixed(8) + ' tokenid:' + TOKEN_IDS.MINIMA;
+        }
+        
+        console.log('Payment command:', payCommand);
+        
+        MDS.cmd(payCommand, (payResponse) => {
+            console.log('Payment Response:', JSON.stringify(payResponse));
+            
+            if (payResponse && payResponse.status) {
+                const txid = payResponse.response?.txnid || 'confirmed';
+                payBtn.querySelector('.btn-text').textContent = '✓ Sent!';
+                payBtn.classList.add('sent');
+                showPaymentStatus('Transaction sent! TX: ' + txid.substring(0, 20) + '...', 'success');
+                
+                setTimeout(() => {
+                    closeModal();
+                    showConfirmation(txid, lastOrderReference);
+                }, 3000);
+            } else {
+                const errorMsg = payResponse?.error || 'Payment may have failed';
+                showPaymentStatus(errorMsg + ' (but order was sent)', 'error');
+                payBtn.disabled = false;
+                payBtn.querySelector('.btn-text').textContent = '💸 Pay Now';
+            }
+        });
+        
+    } catch (error) {
+        console.error('Payment error:', error);
+        payBtn.disabled = false;
+        payBtn.querySelector('.btn-text').textContent = '💸 Pay Now';
+        showPaymentStatus('Error: ' + error.message, 'error');
+    }
+}
+
+// ============ PRICE FETCHING ============
+
+async function saveLastPrice(price) {
+    await saveSetting('minima_last_price', price.toString());
+}
+
+async function loadLastPrice() {
+    const saved = await loadSetting('minima_last_price');
+    return saved ? parseFloat(saved) : DEFAULT_MINIMA_PRICE;
+}
+
+async function fetchCoinGeckoPrice() {
+    return new Promise((resolve) => {
+        const url = 'https://api.coingecko.com/api/v3/simple/price?ids=minima&vs_currencies=usd';
+        
+        if (typeof MDS !== 'undefined') {
+            MDS.net.GET(url, (response) => {
+                if (response.status && response.response) {
+                    try {
+                        const data = JSON.parse(response.response);
+                        if (data.minima && data.minima.usd) {
+                            resolve(data.minima.usd);
+                            return;
+                        }
+                    } catch (e) {
+                        console.error('CoinGecko parse error:', e);
+                    }
+                }
+                resolve(null);
+            });
+            setTimeout(() => resolve(null), 10000);
+        } else {
+            fetch(url)
+                .then(r => r.json())
+                .then(data => resolve(data.minima?.usd || null))
+                .catch(() => resolve(null));
         }
     });
 }
 
-function getStateFromArray(stateArr) {
-    if (!stateArr || !Array.isArray(stateArr)) return null;
-    for (const s of stateArr) {
-        if (s && s.port === 99 && s.data) return s.data;
-    }
-    return null;
-}
-
-async function recoverRepliesFromChain() {
-    if (!buyerInboxAddress) return;
-    
-    console.log('=== RECOVERING REPLIES FROM CHAIN HISTORY ===');
-    
-    try {
-        const cmd = `txpow address:${buyerInboxAddress} max:500`;
-        const result = await new Promise((resolve) => {
-            MDS.cmd(cmd, resolve);
-        });
+async function fetchCoinMarketCapPrice() {
+    return new Promise((resolve) => {
+        const url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?slug=minima&convert=USD';
+        const apiKey = decodeObfuscated(OBFUSCATED_CMC_KEY, CMC_KEY_SALT);
         
-        if (!result || !result.status || !result.response) {
-            console.log('Reply recovery: no response');
-            return;
-        }
-        
-        const txpows = result.response;
-        if (!Array.isArray(txpows)) return;
-        
-        console.log(`Reply recovery: checking ${txpows.length} txpows`);
-        
-        let recovered = 0;
-        for (const txpow of txpows) {
-            if (!txpow || !txpow.hasbody) continue;
-            const body = txpow.body;
-            if (!body || !body.txn) continue;
-            
-            const txn = body.txn;
-            const outputs = txn.outputs || [];
-            
-            for (const output of outputs) {
-                if (!output || !output.storestate) continue;
-                
-                const stateData = getStateFromArray(output.state);
-                if (!stateData) continue;
-                
-                const txid = txpow.txpowid || '';
-                const exists = currentMessages.find(m => m.txid === txid);
-                if (exists) continue;
-                
-                console.log('Reply recovery: found state[99] in txpow:', txid.substring(0, 20));
-                
-                await new Promise((resolve) => {
-                    decryptMessage(stateData).then((decrypted) => {
-                        if (!decrypted) {
-                            resolve();
-                            return;
-                        }
-                        
-                        if (decrypted.type !== 'REPLY') {
-                            resolve();
-                            return;
-                        }
-                        
-                        const message = {
-                            id: Date.now().toString() + '_' + Math.random(),
-                            ref: decrypted.ref || 'REPLY-' + Date.now(),
-                            type: 'REPLY',
-                            subject: 'Reply: ' + (decrypted.ref || 'Order'),
-                            product: decrypted.originalOrder || '',
-                            message: decrypted.message || '',
-                            timestamp: decrypted.timestamp || Date.now(),
-                            txid: txid,
-                            read: false,
-                            direction: 'received',
-                            vendorPublicKey: decrypted.vendorPublicKey || decrypted._senderPublicKey || null,
-                            vendorAddress: decrypted.vendorAddress || null
-                        };
-                        
-                        addMessage(message);
-                        
-                        if (decrypted.ref) {
-                            acknowledgeOrder(decrypted.ref);
-                        }
-                        
-                        recovered++;
-                        resolve();
-                    });
-                });
-            }
-        }
-        
-        if (recovered > 0) {
-            console.log(`Reply chain recovery complete: ${recovered} replies recovered`);
-        } else {
-            console.log('Reply recovery: txpow query found 0, trying coins query...');
-            await recoverRepliesFromCoins();
-        }
-        
-    } catch (err) {
-        console.error('Reply recovery error:', err);
-    }
-}
-
-async function recoverRepliesFromCoins() {
-    if (!buyerInboxAddress) return;
-    
-    try {
-        const result = await new Promise((resolve) => {
-            MDS.cmd('coins address:' + buyerInboxAddress, resolve);
-        });
-        
-        if (!result || !result.status || !Array.isArray(result.response)) {
-            console.log('Reply recovery (coins): no UTXOs found');
-            return;
-        }
-        
-        console.log('Reply recovery (coins): checking', result.response.length, 'UTXOs');
-        
-        let recovered = 0;
-        for (const coin of result.response) {
-            const coinTxid = coin.txid || coin.txnid || coin.coinid || '';
-            const exists = currentMessages.find(m => m.txid === coinTxid);
-            if (exists) continue;
-            
-            const stateData = getState99Data(coin.state);
-            if (!stateData) continue;
-            
-            console.log('Reply recovery (coins): found state[99] in UTXO:', coinTxid.substring(0, 20));
-            
-            const decrypted = await decryptMessage(stateData);
-            if (!decrypted) {
-                console.log('Reply recovery (coins): could not decrypt');
-                continue;
-            }
-            
-            if (decrypted.type !== 'REPLY') continue;
-            
-            const message = {
-                id: Date.now().toString() + '_' + Math.random(),
-                ref: decrypted.ref || 'REPLY-' + Date.now(),
-                type: 'REPLY',
-                subject: 'Reply: ' + (decrypted.ref || 'Order'),
-                product: decrypted.originalOrder || '',
-                message: decrypted.message || '',
-                timestamp: decrypted.timestamp || Date.now(),
-                txid: coinTxid,
-                read: false,
-                direction: 'received',
-                vendorPublicKey: decrypted.vendorPublicKey || decrypted._senderPublicKey || null,
-                vendorAddress: decrypted.vendorAddress || null
-            };
-            
-            addMessage(message);
-            if (decrypted.ref) acknowledgeOrder(decrypted.ref);
-            recovered++;
-        }
-        
-        if (recovered > 0) {
-            console.log(`Reply recovery (coins): ${recovered} replies recovered`);
-        } else {
-            console.log('Reply recovery (coins): no new replies found');
-        }
-    } catch (err) {
-        console.error('Reply recovery (coins) error:', err);
-    }
-}
-
-function startReplyPolling() {
-    if (replyPollingInterval) {
-        clearInterval(replyPollingInterval);
-    }
-    
-    console.log('Starting reply polling for address:', buyerInboxAddress);
-    
-    replyPollingInterval = setInterval(() => {
-        if (!buyerInboxAddress) return;
-        
-        MDS.cmd('coins address:' + buyerInboxAddress, (response) => {
-            if (response && response.status && response.response) {
-                let coins = response.response;
-                if (typeof coins === 'string') {
+        if (typeof MDS !== 'undefined' && apiKey) {
+            MDS.net.GETAUTH(url, 'X-CMC_PRO_API_KEY: ' + apiKey, (response) => {
+                if (response.status && response.response) {
                     try {
-                        coins = JSON.parse(coins);
-                    } catch (e) {
-                        console.error('coins polling: failed to parse response');
-                        return;
-                    }
-                }
-                
-                if (Array.isArray(coins)) {
-                    if (coins.length === 0) {
-                        console.log('coins polling: no UTXOs at buyer inbox address');
-                    }
-                    for (const coin of coins) {
-                        const coinTxid = coin.txid || coin.txnid || coin.coinid || '';
-                        if (getState99Data(coin.state)) {
-                            const exists = currentMessages.find(m => m.txid === coinTxid);
-                            if (!exists) {
-                                console.log('Found new reply via polling!');
-                                processReplyMessage(coin);
-                            }
+                        const data = JSON.parse(response.response);
+                        if (data.data && data.data.MINIMA && data.data.MINIMA.quote && data.data.MINIMA.quote.USD) {
+                            resolve(data.data.MINIMA.quote.USD.price);
+                            return;
                         }
+                    } catch (e) {
+                        console.error('CMC parse error:', e);
                     }
                 }
-            } else {
-                console.error('coins polling: command failed or returned no data');
-            }
-        });
-        
-        checkForUnacknowledgedOrders();
-    }, 15000);
-}
-
-let rebroadcastInterval = null;
-
-async function checkForUnacknowledgedOrders() {
-    if (!vendorAddress || !vendorPublicKey) return;
-    
-    const unacked = await loadUnacknowledgedOrders();
-    if (unacked.length === 0) return;
-    
-    const firstDelay = (PRODUCT.firstRebroadcastDelayHours || 2) * 60 * 60 * 1000;
-    const maxInterval = (PRODUCT.rebroadcastMaxIntervalHours || 24) * 60 * 60 * 1000;
-    const now = Date.now();
-    
-    for (const order of unacked) {
-        const age = now - order.sent_at;
-        const lastRebroadcastAgo = order.last_rebroadcast ? now - order.last_rebroadcast : Infinity;
-        const minInterval = Math.min(Math.pow(2, order.rebroadcast_count) * firstDelay, maxInterval);
-        
-        if (age >= firstDelay && lastRebroadcastAgo >= minInterval) {
-            console.log('Rebroadcasting unacknowledged order:', order.ref);
-            await rebroadcastOrder(order);
+                resolve(null);
+            });
+            setTimeout(() => resolve(null), 10000);
+        } else {
+            resolve(null);
         }
+    });
+}
+
+async function fetchMXPrice() {
+    let price = await fetchCoinGeckoPrice();
+    if (price && price > 0) {
+        await saveLastPrice(price);
+        return price;
     }
-}
-
-async function rebroadcastOrder(order) {
-    try {
-        if (!order.encrypted_data) {
-            console.log('No encrypted data for order:', order.ref);
-            return;
-        }
-        
-        const state = {};
-        state[99] = order.encrypted_data;
-        const command = 'send address:' + vendorAddress + ' amount:0.0001 tokenid:' + TOKEN_IDS.MINIMA + ' state:' + JSON.stringify(state);
-        
-        MDS.cmd(command, (response) => {
-            if (response && response.status) {
-                console.log('Rebroadcast successful for:', order.ref, 'txid:', response.response?.txnid);
-                updateRebroadcastCount(order.ref);
-            } else {
-                console.log('Rebroadcast failed for:', order.ref, response?.error);
-            }
-        });
-    } catch (error) {
-        console.error('Rebroadcast error for', order.ref, ':', error);
+    
+    price = await fetchCoinMarketCapPrice();
+    if (price && price > 0) {
+        await saveLastPrice(price);
+        return price;
     }
+    
+    price = await loadLastPrice();
+    if (price && price > 0) {
+        return price;
+    }
+    
+    return DEFAULT_MINIMA_PRICE;
 }
 
-async function saveLastPrice(price) {
-    await saveFile(PRICE_STORAGE_KEY, price.toString());
-}
-
-async function loadLastPrice() {
-    const saved = await loadFile(PRICE_STORAGE_KEY);
-    return saved ? parseFloat(saved) : DEFAULT_MINIMA_PRICE;
-}
+// ============ UI FUNCTIONS ============
 
 function initApp() {
     document.getElementById('product-name').textContent = PRODUCT.name;
@@ -1153,7 +814,7 @@ function updateSizeButtons() {
     });
 }
 
-function getTotalUsdPrice() {
+function updatePrices() {
     const isUnitsMode = PRODUCT.mode === 'units';
     let productPrice;
     
@@ -1163,22 +824,6 @@ function getTotalUsdPrice() {
         const size = PRODUCT.sizes.find(s => s.id === selectedSize);
         productPrice = PRODUCT.pricePerGram * size.weight;
     }
-    
-    return productPrice + shippingFee;
-}
-
-function updatePrices() {
-    const isUnitsMode = PRODUCT.mode === 'units';
-    let productPrice, size;
-    
-    if (isUnitsMode) {
-        productPrice = PRODUCT.pricePerUnit * selectedQuantity;
-    } else {
-        size = PRODUCT.sizes.find(s => s.id === selectedSize);
-        productPrice = PRODUCT.pricePerGram * size.weight;
-    }
-    
-    console.log('updatePrices called - mode:', PRODUCT.mode, 'quantity/size:', isUnitsMode ? selectedQuantity : selectedSize, 'price:', productPrice);
     
     const priceUsdEl = document.getElementById('price-usd-value');
     if (priceUsdEl) {
@@ -1190,15 +835,12 @@ function updatePrices() {
         buyBtnPriceEl.textContent = `$${productPrice.toFixed(2)} USDT`;
     }
     
-    console.log('mxToUsdRate:', mxToUsdRate);
-    
     const minimaPriceEl = document.getElementById('price-minima');
     if (mxToUsdRate > 0 && mxToUsdRate !== 1) {
         const minimaAmount = productPrice / mxToUsdRate;
         if (minimaPriceEl) {
             minimaPriceEl.textContent = `${minimaAmount.toFixed(4)} Minima`;
         }
-        console.log('Price displayed:', minimaAmount, 'MINI');
     } else {
         if (minimaPriceEl) {
             minimaPriceEl.textContent = 'Loading...';
@@ -1209,135 +851,6 @@ function updatePrices() {
     if (modal && !modal.classList.contains('hidden')) {
         updatePayButton();
     }
-}
-
-async function fetchMinimaPrice() {
-    return new Promise((resolve) => {
-        if (typeof MDS !== 'undefined') {
-            MDS.cmd('price', (response) => {
-                console.log('Minima node price response:', JSON.stringify(response));
-                if (response.status && response.response) {
-                    const price = parseFloat(response.response);
-                    if (price > 0 && price < 1) {
-                        resolve(price);
-                        return;
-                    }
-                }
-                resolve(null);
-            });
-            setTimeout(() => resolve(null), 5000);
-        } else {
-            resolve(null);
-        }
-    });
-}
-
-async function fetchCoinGeckoPrice() {
-    return new Promise((resolve) => {
-        const url = 'https://api.coingecko.com/api/v3/simple/price?ids=minima&vs_currencies=usd';
-        console.log('Fetching from CoinGecko...');
-        
-        if (typeof MDS !== 'undefined') {
-            MDS.net.GET(url, (response) => {
-                console.log('CoinGecko response status:', response.status);
-                if (response.status && response.response) {
-                    try {
-                        const data = JSON.parse(response.response);
-                        console.log('CoinGecko data:', JSON.stringify(data));
-                        if (data.minima && data.minima.usd) {
-                            resolve(data.minima.usd);
-                            return;
-                        }
-                    } catch (e) {
-                        console.error('CoinGecko parse error:', e);
-                    }
-                }
-                resolve(null);
-            });
-            setTimeout(() => resolve(null), 10000);
-        } else {
-            fetch(url)
-                .then(r => r.json())
-                .then(data => {
-                    console.log('CoinGecko (browser):', JSON.stringify(data));
-                    resolve(data.minima?.usd || null);
-                })
-                .catch(e => {
-                    console.error('CoinGecko fetch error:', e);
-                    resolve(null);
-                });
-        }
-    });
-}
-
-async function fetchCoinMarketCapPrice() {
-    return new Promise((resolve) => {
-        const url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?slug=minima&convert=USD';
-        const apiKey = decodeObfuscated(OBFUSCATED_CMC_KEY, CMC_KEY_SALT);
-        console.log('CMC API key (first 10 chars):', apiKey ? apiKey.substring(0, 10) : 'EMPTY');
-        
-        if (typeof MDS !== 'undefined' && apiKey) {
-            MDS.net.GETAUTH(url, 'X-CMC_PRO_API_KEY: ' + apiKey, (response) => {
-                console.log('CMC response:', JSON.stringify(response));
-                if (response.status && response.response) {
-                    try {
-                        const data = JSON.parse(response.response);
-                        if (data.data && data.data.MINIMA && data.data.MINIMA.quote && data.data.MINIMA.quote.USD) {
-                            resolve(data.data.MINIMA.quote.USD.price);
-                            return;
-                        }
-                        if (data.status && data.status.error_code) {
-                            console.log('CMC error:', data.status.error_message);
-                        }
-                    } catch (e) {
-                        console.error('CoinMarketCap parse error:', e);
-                    }
-                }
-                resolve(null);
-            });
-            setTimeout(() => resolve(null), 10000);
-        } else {
-            console.log('CMC: MDS not available or no API key');
-            resolve(null);
-        }
-    });
-}
-
-async function fetchMXPrice() {
-    console.log('Fetching Minima price...');
-    
-    let minimaPrice = await fetchCoinGeckoPrice();
-    console.log('CoinGecko result:', minimaPrice);
-    if (minimaPrice && minimaPrice > 0) {
-        console.log('CoinGecko price:', minimaPrice);
-        await saveLastPrice(minimaPrice);
-        return minimaPrice;
-    }
-    
-    minimaPrice = await fetchCoinMarketCapPrice();
-    console.log('CoinMarketCap result:', minimaPrice);
-    if (minimaPrice && minimaPrice > 0) {
-        console.log('CoinMarketCap price:', minimaPrice);
-        await saveLastPrice(minimaPrice);
-        return minimaPrice;
-    }
-    
-    minimaPrice = await fetchMinimaPrice();
-    console.log('Minima node result:', minimaPrice);
-    if (minimaPrice && minimaPrice > 0) {
-        console.log('Minima node price:', minimaPrice);
-        await saveLastPrice(minimaPrice);
-        return minimaPrice;
-    }
-    
-    minimaPrice = await loadLastPrice();
-    console.log('Last saved price:', minimaPrice);
-    if (minimaPrice && minimaPrice > 0) {
-        return minimaPrice;
-    }
-    
-    console.log('All sources failed, using default price:', DEFAULT_MINIMA_PRICE);
-    return DEFAULT_MINIMA_PRICE;
 }
 
 function setupEventListeners() {
@@ -1408,11 +921,8 @@ function setupEventListeners() {
     document.querySelector('.modal-close').addEventListener('click', closeModal);
     
     document.getElementById('postal-address').addEventListener('input', updatePayButton);
-    
     document.getElementById('email-address').addEventListener('input', updatePayButton);
-    
     document.getElementById('pay-btn').addEventListener('click', processPayment);
-    
     document.getElementById('close-confirmation').addEventListener('click', closeConfirmationModal);
     
     document.getElementById('modal').addEventListener('click', (e) => {
@@ -1423,47 +933,33 @@ function setupEventListeners() {
 function openCheckoutModal() {
     const modal = document.getElementById('modal');
     const isUnitsMode = PRODUCT.mode === 'units';
-    let size, productPrice, sizeLabel;
+    let productPrice, sizeLabel;
     
     if (isUnitsMode) {
         productPrice = PRODUCT.pricePerUnit * selectedQuantity;
         sizeLabel = `${selectedQuantity} unit${selectedQuantity > 1 ? 's' : ''}`;
     } else {
-        size = PRODUCT.sizes.find(s => s.id === selectedSize);
+        const size = PRODUCT.sizes.find(s => s.id === selectedSize);
         productPrice = PRODUCT.pricePerGram * size.weight;
         sizeLabel = `${size.name} (${size.weight}g)`;
     }
     
-    const subtotal = productPrice;
     const totalPrice = productPrice + shippingFee;
-    const minimaSubtotal = subtotal / mxToUsdRate;
-    const minimaSlippage = subtotal / mxToUsdRate * 0.10;
     const minimaTotal = totalPrice / mxToUsdRate * 1.10;
-    
-    const payAmount = document.getElementById('pay-amount');
-    const summaryProduct = document.getElementById('summary-product');
-    const summaryShipping = document.getElementById('summary-shipping');
-    const summarySubtotal = document.getElementById('summary-subtotal');
-    const summaryUsd = document.getElementById('summary-usd');
-    const summaryMinima = document.getElementById('summary-minima');
     
     document.getElementById('modal-product').textContent = PRODUCT.name;
     document.getElementById('summary-size').textContent = sizeLabel;
-    
-    summaryProduct.textContent = `$${subtotal.toFixed(2)} USDT`;
-    summaryShipping.textContent = `$${shippingFee.toFixed(2)} USDT`;
-    summarySubtotal.textContent = `${totalPrice.toFixed(2)} USDT`;
-    summaryUsd.textContent = `$${totalPrice.toFixed(2)} USDT`;
+    document.getElementById('summary-product').textContent = `$${productPrice.toFixed(2)} USDT`;
+    document.getElementById('summary-shipping').textContent = `$${shippingFee.toFixed(2)} USDT`;
+    document.getElementById('summary-subtotal').textContent = `${totalPrice.toFixed(2)} USDT`;
+    document.getElementById('summary-usd').textContent = `$${totalPrice.toFixed(2)} USDT`;
     
     if (mxToUsdRate > 0 && mxToUsdRate !== 1) {
-        summaryMinima.innerHTML = `${minimaTotal.toFixed(4)} Minima<br><span class="slippage-note">(+10% slippage)</span>`;
-        payAmount.textContent = `${totalPrice.toFixed(2)} USD = ${minimaTotal.toFixed(4)} Minima`;
-    } else if (mxToUsdRate === 1) {
-        summaryMinima.textContent = `${totalPrice.toFixed(4)} Minima (price unavailable)`;
-        payAmount.textContent = `${totalPrice.toFixed(2)} USD`;
+        document.getElementById('summary-minima').innerHTML = `${minimaTotal.toFixed(4)} Minima<br><span class="slippage-note">(+10% slippage)</span>`;
+        document.getElementById('pay-amount').textContent = `${totalPrice.toFixed(2)} USD = ${minimaTotal.toFixed(4)} Minima`;
     } else {
-        summaryMinima.textContent = 'Loading...';
-        payAmount.textContent = '--';
+        document.getElementById('summary-minima').textContent = 'Loading...';
+        document.getElementById('pay-amount').textContent = '--';
     }
     
     document.getElementById('postal-address').value = '';
@@ -1488,26 +984,16 @@ function updateCheckoutSummary() {
         productPrice = PRODUCT.pricePerGram * size.weight;
     }
     
-    const subtotal = productPrice;
     const totalPrice = productPrice + shippingFee;
     const minimaTotal = totalPrice / mxToUsdRate * 1.10;
     
-    const summaryShipping = document.getElementById('summary-shipping');
-    const summarySubtotal = document.getElementById('summary-subtotal');
-    const summaryUsd = document.getElementById('summary-usd');
-    const summaryMinima = document.getElementById('summary-minima');
-    const payAmount = document.getElementById('pay-amount');
-    
-    summaryShipping.textContent = `$${shippingFee.toFixed(2)} USDT`;
-    summarySubtotal.textContent = `${totalPrice.toFixed(2)} USDT`;
-    summaryUsd.textContent = `$${totalPrice.toFixed(2)} USDT`;
+    document.getElementById('summary-shipping').textContent = `$${shippingFee.toFixed(2)} USDT`;
+    document.getElementById('summary-subtotal').textContent = `${totalPrice.toFixed(2)} USDT`;
+    document.getElementById('summary-usd').textContent = `$${totalPrice.toFixed(2)} USDT`;
     
     if (mxToUsdRate > 0 && mxToUsdRate !== 1) {
-        summaryMinima.innerHTML = `${minimaTotal.toFixed(4)} Minima<br><span class="slippage-note">(+10% slippage)</span>`;
-        payAmount.textContent = `${totalPrice.toFixed(2)} USD = ${minimaTotal.toFixed(4)} Minima`;
-    } else if (mxToUsdRate === 1) {
-        summaryMinima.textContent = `${totalPrice.toFixed(4)} Minima (price unavailable)`;
-        payAmount.textContent = `${totalPrice.toFixed(2)} USD`;
+        document.getElementById('summary-minima').innerHTML = `${minimaTotal.toFixed(4)} Minima<br><span class="slippage-note">(+10% slippage)</span>`;
+        document.getElementById('pay-amount').textContent = `${totalPrice.toFixed(2)} USD = ${minimaTotal.toFixed(4)} Minima`;
     }
 }
 
@@ -1574,246 +1060,6 @@ function updatePayButton() {
     }
 }
 
-async function processPayment() {
-    const postalAddress = document.getElementById('postal-address').value.trim();
-    const emailAddress = document.getElementById('email-address').value.trim();
-    const isUnitsMode = PRODUCT.mode === 'units';
-    let productPrice;
-    let sizeLabel;
-    
-    if (isUnitsMode) {
-        productPrice = PRODUCT.pricePerUnit * selectedQuantity;
-        sizeLabel = `${selectedQuantity} unit${selectedQuantity > 1 ? 's' : ''}`;
-    } else {
-        const size = PRODUCT.sizes.find(s => s.id === selectedSize);
-        productPrice = PRODUCT.pricePerGram * size.weight;
-        sizeLabel = `${size.name} (${size.weight}g)`;
-    }
-    
-    const totalPrice = productPrice + shippingFee;
-    
-    let deliveryInfo;
-    if (selectedShipping === 'digital') {
-        if (!emailAddress.includes('@')) {
-            showPaymentStatus('Please enter a valid email address', 'error');
-            return;
-        }
-        deliveryInfo = emailAddress;
-    } else {
-        if (postalAddress.length < 10) {
-            showPaymentStatus('Please enter a complete postal address', 'error');
-            return;
-        }
-        deliveryInfo = postalAddress;
-    }
-    
-    const payBtn = document.getElementById('pay-btn');
-    payBtn.disabled = true;
-    
-    showPaymentStatus('Preparing transaction...', 'pending');
-    
-    try {
-        if (!vendorPublicKey) {
-            showPaymentStatus('Error: ChainMail public key not configured', 'error');
-            payBtn.disabled = false;
-            payBtn.querySelector('.btn-text').textContent = '💸 Pay Now';
-            return;
-        }
-
-        if (!buyerAddress) {
-            buyerAddress = await getOrCreateBuyerAddress();
-            buyerInboxAddress = buyerAddress;
-        }
-
-        if (!buyerAddress) {
-            showPaymentStatus('Error: Could not get buyer address', 'error');
-            payBtn.disabled = false;
-            payBtn.querySelector('.btn-text').textContent = '💸 Pay Now';
-            return;
-        }
-        
-        if (!buyerPublicKey) {
-            showPaymentStatus('Getting buyer info...', 'pending');
-            buyerPublicKey = await getMyPublicKey();
-            buyerAddress = buyerInboxAddress;
-            if (!buyerPublicKey) {
-                showPaymentStatus('Error: Could not get buyer public key', 'error');
-                payBtn.disabled = false;
-                payBtn.querySelector('.btn-text').textContent = '💸 Pay Now';
-                return;
-            }
-            console.log('Buyer info fetched on-demand:', { buyerPublicKey, buyerAddress });
-            await saveBuyerIdentity(buyerInboxAddress, buyerPublicKey);
-        }
-        
-        let sendAmount;
-        let tokenName;
-        if (selectedPaymentMethod === 'USDT') {
-            sendAmount = totalPrice;
-            tokenName = 'USDT';
-        } else {
-            sendAmount = totalPrice / mxToUsdRate * 1.10;
-            tokenName = 'Minima';
-        }
-        
-        payBtn.querySelector('.btn-text').textContent = `Pay ${totalPrice.toFixed(2)} USD`;
-        
-        lastOrderReference = generateOrderReference(PRODUCT.name);
-        
-        const messagePayload = {
-            ref: lastOrderReference,
-            product: PRODUCT.name,
-            size: sizeLabel,
-            amount: totalPrice.toFixed(2),
-            currency: tokenName,
-            delivery: deliveryInfo,
-            shipping: selectedShipping,
-            timestamp: Date.now(),
-            buyerPublicKey: '',
-            buyerAddress: ''
-        };
-        
-        showPaymentStatus('Getting buyer info...', 'pending');
-        console.log('=== SENDING ORDER (Single TX) ===');
-        
-        const orderPayload = {
-            ref: lastOrderReference,
-            product: PRODUCT.name,
-            size: sizeLabel,
-            amount: totalPrice.toFixed(2),
-            currency: tokenName,
-            delivery: deliveryInfo,
-            shipping: selectedShipping,
-            timestamp: Date.now(),
-            buyerPublicKey: '',
-            buyerAddress: ''
-        };
-        
-        try {
-            const buyerInfo = await encryptMessage(vendorPublicKey, orderPayload);
-            
-            if (!buyerInfo || !buyerInfo.encrypted) {
-                throw new Error('Failed to encrypt message');
-            }
-            
-            const fullPayload = {
-                ...orderPayload,
-                buyerPublicKey: buyerPublicKey || buyerInfo.buyerPublicKey || '',
-                buyerAddress: buyerAddress || buyerInfo.buyerAddress || buyerInboxAddress || ''
-            };
-            
-            console.log('Buyer info obtained:', {
-                publicKey: buyerInfo.buyerPublicKey,
-                address: buyerInfo.buyerAddress
-            });
-            
-            showPaymentStatus('Sending encrypted order...', 'pending');
-            
-            const encryptedFinal = await encryptMessage(vendorPublicKey, fullPayload);
-            
-            if (!encryptedFinal || !encryptedFinal.encrypted) {
-                throw new Error('Failed to encrypt full message');
-            }
-            
-            const state = {};
-            state[99] = encryptedFinal.encrypted;
-            console.log('Encrypted state length:', String(encryptedFinal.encrypted || '').length);
-            
-            const command = 'send address:' + vendorAddress + ' amount:0.0001 tokenid:' + TOKEN_IDS.MINIMA + ' state:' + JSON.stringify(state);
-            
-            await new Promise((resolve, reject) => {
-                MDS.cmd(command, (response) => {
-                    console.log('Order TX Response:', JSON.stringify(response));
-                    if (response && response.status) {
-                        const orderTxid = response.response?.txnid || 'confirmed';
-                        console.log('Order sent with txid:', orderTxid);
-                        
-                        addMessage({
-                            id: Date.now().toString(),
-                            ref: lastOrderReference,
-                            type: 'ORDER',
-                            product: PRODUCT.name,
-                            size: sizeLabel,
-                            amount: totalPrice.toFixed(2),
-                            currency: tokenName,
-                            delivery: deliveryInfo,
-                            shipping: selectedShipping,
-                            timestamp: Date.now(),
-                            txid: orderTxid,
-                            read: true,
-                            direction: 'sent',
-                            buyerPublicKey: buyerPublicKey || buyerInfo.buyerPublicKey || '',
-                            buyerAddress: buyerAddress || buyerInfo.buyerAddress || buyerInboxAddress || ''
-                        });
-                        
-                        saveSentOrder({
-                            ref: lastOrderReference,
-                            product: PRODUCT.name,
-                            size: sizeLabel,
-                            amount: totalPrice.toFixed(2),
-                            currency: tokenName,
-                            delivery: deliveryInfo,
-                            shipping: selectedShipping,
-                            encrypted_data: encryptedFinal.encrypted,
-                            sent_at: Date.now(),
-                            acknowledged: false,
-                            rebroadcast_count: 0,
-                            last_rebroadcast: null
-                        });
-                        
-                        saveBuyerIdentity(buyerAddress || buyerInboxAddress, buyerPublicKey);
-                        saveShopConfig();
-                        
-                        showPaymentStatus('Sending payment...', 'pending');
-                        
-                        let payCommand;
-                        if (selectedPaymentMethod === 'USDT') {
-                            payCommand = 'send address:' + vendorAddress + ' amount:' + sendAmount.toFixed(8) + ' tokenid:' + TOKEN_IDS.USDT;
-                        } else {
-                            payCommand = 'send address:' + vendorAddress + ' amount:' + sendAmount.toFixed(8) + ' tokenid:' + TOKEN_IDS.MINIMA;
-                        }
-                        
-                        console.log('Payment command:', payCommand);
-                        
-                        MDS.cmd(payCommand, (payResponse) => {
-                            console.log('MDS Payment Response:', JSON.stringify(payResponse));
-                            
-                            if (payResponse && payResponse.status) {
-                                const txid = payResponse.response?.txnid || payResponse.response?.tx?.pow || 'confirmed';
-                                payBtn.querySelector('.btn-text').textContent = '✓ Sent!';
-                                payBtn.classList.add('sent');
-                                showPaymentStatus('Transaction sent! TX: ' + txid.substring(0, 20) + '...', 'success');
-                                
-                                setTimeout(() => {
-                                    closeModal();
-                                    showConfirmation(txid, lastOrderReference);
-                                }, 3000);
-                            } else {
-                                const errorMsg = payResponse?.error || 'Payment may have failed';
-                                showPaymentStatus(errorMsg + ' (but order was encrypted and sent)', 'error');
-                                payBtn.disabled = false;
-                                payBtn.querySelector('.btn-text').textContent = '💸 Pay Now';
-                            }
-                            resolve();
-                        });
-                    } else {
-                        reject(new Error(response?.error || 'Order TX failed'));
-                    }
-                });
-            });
-        } catch (error) {
-            showPaymentStatus('Failed to send order: ' + error.message, 'error');
-            payBtn.disabled = false;
-            payBtn.querySelector('.btn-text').textContent = '💸 Pay Now';
-        }
-        
-    } catch (error) {
-        payBtn.disabled = false;
-        payBtn.querySelector('.btn-text').textContent = '💸 Pay Now';
-        showPaymentStatus('Error processing payment: ' + error.message, 'error');
-    }
-}
-
 function showPaymentStatus(message, type) {
     const statusEl = document.getElementById('payment-status');
     statusEl.classList.remove('hidden', 'success', 'error', 'pending');
@@ -1841,18 +1087,14 @@ function validateVendorAddress() {
         const decoded = JSON.parse(atob(VENDOR_CONFIG.obfuscatedAddress));
         if (decoded.address && decoded.address.startsWith('0x')) {
             vendorAddress = decoded.address;
-            
             vendorPublicKey = getDecodedPublicKey();
             
             if (!vendorPublicKey) {
-                console.error('Missing or invalid vendor public key in config');
+                console.error('Missing vendor public key');
                 document.querySelector('.main-content').innerHTML = `
                     <div class="product-card" style="text-align: center; padding: 3rem;">
                         <h2 style="color: #c62828;">⚠️ Configuration Error</h2>
-                        <p style="color: #333; margin-top: 1rem;">
-                            Vendor public key is missing or invalid.<br>
-                            Please regenerate your MiniDapp with a valid config.
-                        </p>
+                        <p style="color: #333; margin-top: 1rem;">Vendor public key is missing.</p>
                     </div>
                 `;
                 return false;
@@ -1867,14 +1109,13 @@ function validateVendorAddress() {
     document.querySelector('.main-content').innerHTML = `
         <div class="product-card" style="text-align: center; padding: 3rem;">
             <h2 style="color: #c62828;">⚠️ Invalid Configuration</h2>
-            <p style="color: #333; margin-top: 1rem;">
-                This MiniDapp has been tampered with.<br>
-                Please download a fresh copy from the vendor.
-            </p>
+            <p style="color: #333; margin-top: 1rem;">This MiniDapp has been tampered with.</p>
         </div>
     `;
     return false;
 }
+
+// ============ INBOX VIEW ============
 
 let currentView = 'shop';
 let selectedMessage = null;
@@ -1953,6 +1194,28 @@ function renderShop() {
     `;
 }
 
+function formatTime(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now - date;
+    
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+    if (diff < 604800000) return Math.floor(diff / 86400000) + 'd ago';
+    
+    return date.toLocaleDateString();
+}
+
+function getShippingLabel(shipping) {
+    const labels = {
+        'uk': '🇬🇧 UK Domestic ($5)',
+        'intl': '🌍 International ($20)',
+        'digital': '📧 Electronic Delivery (Free)'
+    };
+    return labels[shipping] || shipping;
+}
+
 function renderInbox() {
     const mainContent = document.querySelector('.main-content');
     const inboxMessages = currentMessages.filter(m => m.direction === 'received');
@@ -1996,7 +1259,6 @@ function renderMessageList(messages, type) {
     return messages.map(msg => {
         const isReply = msg.type === 'REPLY';
         const isBuyerReply = msg.type === 'BUYER_REPLY';
-        const isSent = msg.direction === 'sent';
         return `
         <div class="message-item ${msg.direction === 'received' && !msg.read ? 'unread' : ''} ${isBuyerReply ? 'buyer-reply' : ''}" data-id="${msg.id}">
             <div class="message-icon">${isBuyerReply ? '↩️' : (isReply ? '↩️' : (msg.direction === 'received' ? '📨' : '📤'))}</div>
@@ -2006,7 +1268,7 @@ function renderMessageList(messages, type) {
                     <span class="message-ref">${msg.ref}</span>
                     ${isBuyerReply ? '<span class="message-type">Your Reply</span>' : 
                       (isReply ? '<span class="message-type">Vendor Reply</span>' : 
-                      (isSent ? '<span class="message-type">Sent</span>' : `<span class="message-amount">$${msg.amount} ${msg.currency}</span>`))}
+                      `<span class="message-amount">$${msg.amount} ${msg.currency}</span>`)}
                 </div>
             </div>
             <div class="message-time">${formatTime(msg.timestamp)}</div>
@@ -2017,7 +1279,7 @@ function renderMessageList(messages, type) {
 function renderMessageDetail(msg) {
     const isReceived = msg.direction === 'received';
     const isReply = msg.type === 'REPLY';
-    const canReply = isReply && (msg.vendorPublicKey || msg.vendorAddress);
+    const canReply = isReply && msg.vendorPublicKey;
     
     if (isReply) {
         return `
@@ -2032,22 +1294,16 @@ function renderMessageDetail(msg) {
                     <span class="info-label">Order Ref:</span>
                     <span class="info-value">${msg.ref}</span>
                 </div>
-                ${msg.originalOrder ? `
+                ${msg.product ? `
                 <div class="info-row">
                     <span class="info-label">Re:</span>
-                    <span class="info-value">${msg.originalOrder}</span>
+                    <span class="info-value">${msg.product}</span>
                 </div>
                 ` : ''}
                 <div class="info-row">
                     <span class="info-label">Time:</span>
                     <span class="info-value">${new Date(msg.timestamp).toLocaleString()}</span>
                 </div>
-                ${msg.txid ? `
-                <div class="info-row">
-                    <span class="info-label">TX ID:</span>
-                    <span class="info-value txid">${msg.txid.substring(0, 20)}...</span>
-                </div>
-                ` : ''}
             </div>
             
             <div class="reply-content">
@@ -2093,12 +1349,6 @@ function renderMessageDetail(msg) {
                 <span class="info-label">Amount:</span>
                 <span class="info-value">$${msg.amount} ${msg.currency}</span>
             </div>
-            ${isReceived ? `
-            <div class="info-row">
-                <span class="info-label">Delivery:</span>
-                <span class="info-value delivery-address">${msg.delivery}</span>
-            </div>
-            ` : ''}
             <div class="info-row">
                 <span class="info-label">Shipping:</span>
                 <span class="info-value">${getShippingLabel(msg.shipping)}</span>
@@ -2107,137 +1357,8 @@ function renderMessageDetail(msg) {
                 <span class="info-label">Time:</span>
                 <span class="info-value">${new Date(msg.timestamp).toLocaleString()}</span>
             </div>
-            ${msg.txid ? `
-            <div class="info-row">
-                <span class="info-label">TX ID:</span>
-                <span class="info-value txid">${msg.txid.substring(0, 20)}...</span>
-            </div>
-            ` : ''}
         </div>
-        
-        ${isReceived ? `
-        <div class="message-actions">
-            <button class="action-btn copy-address" data-address="${msg.delivery}">📋 Copy Address</button>
-        </div>
-        ` : ''}
     `;
-}
-
-let buyerReplyTarget = null;
-
-function openBuyerReplyModal(msg) {
-    buyerReplyTarget = msg;
-    
-    document.getElementById('buyer-reply-ref').textContent = 'Re: ' + (msg.ref || 'Order');
-    document.getElementById('buyer-reply-message').value = '';
-    document.getElementById('buyer-reply-status').textContent = '';
-    document.getElementById('buyer-reply-status').className = 'reply-status';
-    document.getElementById('buyer-send-reply-btn').disabled = false;
-    document.getElementById('buyer-send-reply-btn').textContent = '📤 Send Reply';
-    
-    document.getElementById('buyer-reply-modal').classList.remove('hidden');
-}
-
-function closeBuyerReplyModal() {
-    document.getElementById('buyer-reply-modal').classList.add('hidden');
-    buyerReplyTarget = null;
-}
-
-async function sendBuyerReply() {
-    if (!buyerReplyTarget) return;
-    
-    const messageText = document.getElementById('buyer-reply-message').value.trim();
-    const statusEl = document.getElementById('buyer-reply-status');
-    const sendBtn = document.getElementById('buyer-send-reply-btn');
-    
-    if (!messageText) {
-        statusEl.textContent = 'Please enter a message';
-        statusEl.className = 'reply-status error';
-        return;
-    }
-    
-    const msg = buyerReplyTarget;
-    
-    if (!msg.vendorPublicKey) {
-        statusEl.textContent = 'Missing vendor public key';
-        statusEl.className = 'reply-status error';
-        return;
-    }
-    
-    statusEl.textContent = 'Encrypting reply...';
-    statusEl.className = 'reply-status pending';
-    sendBtn.disabled = true;
-    
-    try {
-        const replyPayload = {
-            type: 'BUYER_REPLY',
-            ref: msg.ref,
-            originalOrder: msg.product || msg.originalOrder || '',
-            message: messageText,
-            timestamp: Date.now(),
-            buyerPublicKey: buyerPublicKey || '',
-            buyerAddress: buyerAddress || ''
-        };
-        
-        console.log('Buyer sending reply payload:', replyPayload);
-        
-        const encrypted = await encryptMessage(msg.vendorPublicKey, replyPayload);
-        
-        if (!encrypted || !encrypted.encrypted) {
-            throw new Error('Encryption failed');
-        }
-        
-        statusEl.textContent = 'Sending encrypted reply...';
-        
-        const state = {};
-        state[99] = encrypted.encrypted;
-        console.log('Buyer reply encrypted length:', String(encrypted.encrypted).length);
-        
-        const sendAddress = msg.vendorAddress || buyerInboxAddress;
-        
-        const command = 'send address:' + sendAddress + ' amount:0.0001 tokenid:' + TOKEN_IDS.MINIMA + ' state:' + JSON.stringify(state);
-        console.log('Sending buyer reply via TX:', command);
-        
-        MDS.cmd(command, (response) => {
-            console.log('Buyer reply TX Response:', JSON.stringify(response));
-            if (response && response.status) {
-                const txid = response.response?.txnid || 'confirmed';
-                statusEl.textContent = 'Reply sent! TX: ' + txid.substring(0, 20) + '...';
-                statusEl.className = 'reply-status success';
-                sendBtn.textContent = '✓ Sent!';
-                
-                const message = {
-                    id: Date.now().toString(),
-                    ref: msg.ref + '-R',
-                    type: 'BUYER_REPLY',
-                    subject: 'Re: ' + (msg.ref || 'Order'),
-                    product: msg.product || '',
-                    message: messageText,
-                    timestamp: Date.now(),
-                    txid: txid,
-                    read: true,
-                    direction: 'sent'
-                };
-                addMessage(message);
-                
-                setTimeout(() => {
-                    closeBuyerReplyModal();
-                }, 2000);
-            } else {
-                statusEl.textContent = 'Failed: ' + (response?.error || 'Transaction failed');
-                statusEl.className = 'reply-status error';
-                sendBtn.disabled = false;
-                sendBtn.textContent = '📤 Send Reply';
-            }
-        });
-        
-    } catch (error) {
-        console.error('Error sending buyer reply:', error);
-        statusEl.textContent = 'Error: ' + error.message;
-        statusEl.className = 'reply-status error';
-        sendBtn.disabled = false;
-        sendBtn.textContent = '📤 Send Reply';
-    }
 }
 
 function setupInboxEventListeners() {
@@ -2254,10 +1375,10 @@ function setupInboxEventListeners() {
     document.querySelectorAll('.message-item').forEach(item => {
         item.addEventListener('click', () => {
             const msgId = item.dataset.id;
-            selectedMessage = currentMessages.find(m => m.id === msgId);
+            selectedMessage = currentMessages.find(m => m.id == msgId);
             if (selectedMessage && selectedMessage.direction === 'received' && !selectedMessage.read) {
                 selectedMessage.read = true;
-                saveMessages(currentMessages);
+                saveMessageToDb(selectedMessage);
             }
             document.getElementById('inbox-list').classList.add('hidden');
             document.getElementById('inbox-detail').classList.remove('hidden');
@@ -2277,23 +1398,11 @@ function setupDetailEventListeners() {
         });
     }
     
-    document.querySelectorAll('.copy-address').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const address = btn.dataset.address;
-            navigator.clipboard.writeText(address).then(() => {
-                btn.textContent = '✓ Copied!';
-                setTimeout(() => {
-                    btn.textContent = '📋 Copy Address';
-                }, 2000);
-            });
-        });
-    });
-    
     const replyToVendorBtn = document.getElementById('reply-to-vendor-btn');
     if (replyToVendorBtn) {
         replyToVendorBtn.addEventListener('click', () => {
             const msgId = replyToVendorBtn.dataset.id;
-            const msg = currentMessages.find(m => m.id === msgId);
+            const msg = currentMessages.find(m => m.id == msgId);
             if (msg) {
                 openBuyerReplyModal(msg);
             }
@@ -2318,28 +1427,6 @@ function setupDetailEventListeners() {
     if (buyerSendReplyBtn) {
         buyerSendReplyBtn.addEventListener('click', sendBuyerReply);
     }
-}
-
-function formatTime(timestamp) {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diff = now - date;
-    
-    if (diff < 60000) return 'Just now';
-    if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
-    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
-    if (diff < 604800000) return Math.floor(diff / 86400000) + 'd ago';
-    
-    return date.toLocaleDateString();
-}
-
-function getShippingLabel(shipping) {
-    const labels = {
-        'uk': '🇬🇧 UK Domestic ($5)',
-        'intl': '🌍 International ($20)',
-        'digital': '📧 Electronic Delivery (Free)'
-    };
-    return labels[shipping] || shipping;
 }
 
 function switchView(view) {
@@ -2385,65 +1472,41 @@ function setupNavigation() {
     });
 }
 
+// ============ MDS INITIALIZATION ============
+
 MDS.init(async (msg) => {
     console.log('MDS event:', msg.event);
     
     if (msg.event === 'inited') {
-        console.log('MDS initialized');
+        console.log('MDS initialized (ChainMail protocol)');
         
         if (!validateVendorAddress()) return;
         
-        if (typeof MDS !== 'undefined') {
-            MDS.cmd('coinnotify action:add address:' + vendorAddress, function(resp) {
-                console.log('Coin notify registered for vendor:', resp);
-            });
-        }
-        
         await initDB();
-        currentMessages = await loadMessages();
+        currentMessages = await loadMessagesFromDb();
+        
+        // Get buyer's public key
+        buyerPublicKey = await getMyPublicKey();
+        console.log('Buyer public key:', buyerPublicKey ? buyerPublicKey.substring(0, 20) + '...' : 'null');
+        
+        // Register coinnotify for the fixed MINIMERCH_ADDRESS
+        MDS.cmd('coinnotify action:add address:' + MINIMERCH_ADDRESS, function(resp) {
+            console.log('Shop: coinnotify registered for MINIMERCH_ADDRESS:', JSON.stringify(resp));
+        });
         
         setupNavigation();
         renderShop();
         initApp();
         
-        const preloadedIdentity = await loadBuyerIdentity();
-        buyerAddress = await getOrCreateBuyerAddress(preloadedIdentity);
-        buyerInboxAddress = buyerAddress;
-        if (buyerInboxAddress) {
-            console.log('Buyer inbox address:', buyerInboxAddress);
-
-            if (preloadedIdentity && preloadedIdentity.publicKey) {
-                buyerPublicKey = preloadedIdentity.publicKey;
-                console.log('Buyer public key loaded from stored identity:', buyerPublicKey.substring(0, 20) + '...');
-            } else if (preloadedIdentity && preloadedIdentity.publicKey === null) {
-                console.log('Buyer public key is null in stored identity (reinstall detected) — fetching fresh key');
-                buyerPublicKey = await getMyPublicKey();
-                console.log('Fresh buyer public key from node:', buyerPublicKey ? buyerPublicKey.substring(0, 20) + '...' : 'null');
-            } else {
-                buyerPublicKey = await getMyPublicKey();
-                console.log('New buyer public key from node:', buyerPublicKey ? buyerPublicKey.substring(0, 20) + '...' : 'null');
-            }
-            await saveBuyerIdentity(buyerInboxAddress, buyerPublicKey);
-            await saveShopConfig();
-
-            if (typeof MDS !== 'undefined') {
-                MDS.cmd('coinnotify action:add address:' + buyerInboxAddress, function(resp) {
-                    console.log('Coin notify registered for buyer inbox:', resp);
-                });
-            }
-
-            startReplyPolling();
-            setTimeout(() => recoverRepliesFromChain(), 5000);
-        } else {
-            await saveShopConfig();
-        }
+        // Scan for replies
+        setTimeout(() => scanForReplies(), 3000);
         
-        setTimeout(() => checkForUnacknowledgedOrders(), 5000);
+        // Periodic polling for replies
+        setInterval(() => scanForReplies(), 30000);
         
         const loadingIndicator = document.getElementById('loading-indicator');
         if (loadingIndicator) loadingIndicator.classList.remove('hidden');
         
-        console.log('Fetching price...');
         mxToUsdRate = await fetchMXPrice();
         console.log('Got price:', mxToUsdRate);
         
@@ -2451,16 +1514,16 @@ MDS.init(async (msg) => {
         updatePrices();
         
     } else if (msg.event === 'NOTIFYCOIN') {
-        if (msg.data) {
-            if (buyerInboxAddress && msg.data.address === buyerInboxAddress) {
-                processReplyMessage(msg.data.coin);
-            }
-            if (vendorAddress && msg.data.address === vendorAddress) {
-                processIncomingMessage(msg.data.coin);
+        if (msg.data && msg.data.coin) {
+            const coin = msg.data.coin;
+            if (coin.address === MINIMERCH_ADDRESS) {
+                processReplyMessage(coin);
             }
         }
     } else if (msg.event === 'NEWBLOCK') {
         mxToUsdRate = await fetchMXPrice();
         updatePrices();
+    } else if (msg.event === 'MDS_TIMER_10SECONDS') {
+        scanForReplies();
     }
 });
