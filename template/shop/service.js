@@ -1,5 +1,5 @@
-const MESSAGES_FILE_KEY = 'mishop_messages';
-const CONFIG_FILE_KEY = 'mishop_config';
+const MESSAGES_FILE_KEY = '/mishop_messages.json';
+const CONFIG_FILE_KEY = '/mishop_config.json';
 const TOKEN_ID_MINIMA = '0x00';
 
 let config = null;

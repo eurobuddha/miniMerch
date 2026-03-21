@@ -1,6 +1,6 @@
-const MESSAGES_FILE_KEY = 'mishop_inbox_messages';
-const CONFIG_FILE_KEY = 'mishop_inbox_config';
-const PROCESSED_FILE_KEY = 'mishop_inbox_processed';
+const MESSAGES_FILE_KEY = '/mishop_inbox_messages.json';
+const CONFIG_FILE_KEY = '/mishop_inbox_config.json';
+const PROCESSED_FILE_KEY = '/mishop_inbox_processed.json';
 const TOKEN_ID_MINIMA = '0x00';
 
 let config = null;

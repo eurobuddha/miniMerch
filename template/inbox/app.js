@@ -9,8 +9,8 @@ let pollingInterval = null;
 let dbReady = false;
 let mdsSqlWorking = false;
 let fileReady = false;
-const MESSAGES_FILE_KEY = 'mishop_inbox_messages';
-const INBOX_CONFIG_FILE_KEY = 'mishop_inbox_config';
+const MESSAGES_FILE_KEY = '/mishop_inbox_messages.json';
+const INBOX_CONFIG_FILE_KEY = '/mishop_inbox_config.json';
 
 function escapeSQL(val) {
     if (val == null) return 'NULL';

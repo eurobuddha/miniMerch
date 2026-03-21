@@ -14,10 +14,10 @@ const SHIPPING_RATES = {
 const OBFUSCATED_CMC_KEY = '';
 const CMC_KEY_SALT = '';
 const PRICE_STORAGE_KEY = 'minima_last_price';
-const MESSAGES_STORAGE_KEY = 'mishop_messages';
-const BUYER_ADDRESS_STORAGE_KEY = 'mishop_buyer_address';
-const BUYER_IDENTITY_KEY = 'mishop_buyer_identity';
-const SHOP_CONFIG_KEY = 'mishop_config';
+const MESSAGES_STORAGE_KEY = '/mishop_messages.json';
+const BUYER_ADDRESS_STORAGE_KEY = '/mishop_buyer_address.json';
+const BUYER_IDENTITY_KEY = '/mishop_buyer_identity.json';
+const SHOP_CONFIG_KEY = '/mishop_config.json';
 
 let dbReady = false;
 let mdsSqlWorking = false;
