@@ -1,6 +1,6 @@
 {
   "name": "@eurobuddha/mini-merch",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CLI tool to generate miniMerch MiniDapps for the Minima blockchain — sell physical or digital goods with built-in encrypted messaging",
   "main": "src/index.js",
   "bin": {
