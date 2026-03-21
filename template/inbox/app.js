@@ -65,26 +65,36 @@ async function initDB() {
     if (dbReady) return;
     try {
         // Create table with all columns
-        await sqlAsync(
+        const createResult = await sqlAsync(
             `CREATE TABLE IF NOT EXISTS messages (` +
             `id INTEGER PRIMARY KEY AUTOINCREMENT,` +
             `randomid TEXT UNIQUE,` +
             `ref TEXT, type TEXT, product TEXT, size TEXT,` +
             `amount TEXT, currency TEXT, delivery TEXT, shipping TEXT,` +
             `message TEXT, timestamp INTEGER, coinid TEXT,` +
-            `read INTEGER, direction TEXT,` +
+            `read INTEGER DEFAULT 0, direction TEXT DEFAULT 'received',` +
             `buyerPublicKey TEXT, buyerAddress TEXT,` +
             `originalRef TEXT, originalOrder TEXT, originalProduct TEXT)`
         );
+        console.log('CREATE messages table result:', JSON.stringify(createResult));
         
         // Migration: Add columns if they don't exist (for existing installs)
-        await sqlAsync(`ALTER TABLE messages ADD COLUMN originalRef TEXT`).catch(() => {});
-        await sqlAsync(`ALTER TABLE messages ADD COLUMN originalOrder TEXT`).catch(() => {});
-        await sqlAsync(`ALTER TABLE messages ADD COLUMN originalProduct TEXT`).catch(() => {});
-        await sqlAsync(`ALTER TABLE messages ADD COLUMN direction TEXT DEFAULT 'received'`).catch(() => {});
+        // These may fail if columns already exist, that's OK
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN originalRef TEXT`);
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN originalOrder TEXT`);
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN originalProduct TEXT`);
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN direction TEXT DEFAULT 'received'`);
         
-        dbReady = true;
-        console.log('Inbox DB initialized');
+        // Verify table exists
+        const verifyResult = await sqlAsync(`SELECT COUNT(*) as cnt FROM messages`);
+        console.log('Verify messages table:', JSON.stringify(verifyResult));
+        
+        if (verifyResult && verifyResult.status) {
+            dbReady = true;
+            console.log('Inbox DB initialized successfully');
+        } else {
+            console.error('Inbox DB verification failed:', verifyResult?.error);
+        }
     } catch (err) {
         console.error('Inbox DB init error:', err);
     }

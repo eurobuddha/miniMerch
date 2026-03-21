@@ -110,30 +110,42 @@ async function initDB() {
     if (dbReady) return;
     try {
         // Create tables with all columns
-        await sqlAsync(
+        const createResult = await sqlAsync(
             `CREATE TABLE IF NOT EXISTS messages (` +
             `id INTEGER PRIMARY KEY AUTOINCREMENT,` +
             `randomid TEXT UNIQUE,` +
             `ref TEXT, type TEXT, product TEXT, size TEXT,` +
             `amount TEXT, currency TEXT, delivery TEXT, shipping TEXT,` +
             `message TEXT, timestamp INTEGER, coinid TEXT,` +
-            `read INTEGER, direction TEXT,` +
+            `read INTEGER DEFAULT 0, direction TEXT DEFAULT 'sent',` +
             `buyerPublicKey TEXT, vendorPublicKey TEXT, vendorAddress TEXT,` +
             `subject TEXT, originalOrder TEXT)`
         );
-        await sqlAsync(
+        console.log('CREATE messages table result:', JSON.stringify(createResult));
+        
+        const createSettingsResult = await sqlAsync(
             `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`
         );
+        console.log('CREATE settings table result:', JSON.stringify(createSettingsResult));
         
         // Migration: Add columns if they don't exist (for existing installs)
-        await sqlAsync(`ALTER TABLE messages ADD COLUMN subject TEXT`).catch(() => {});
-        await sqlAsync(`ALTER TABLE messages ADD COLUMN originalOrder TEXT`).catch(() => {});
-        await sqlAsync(`ALTER TABLE messages ADD COLUMN direction TEXT DEFAULT 'sent'`).catch(() => {});
-        await sqlAsync(`ALTER TABLE messages ADD COLUMN vendorPublicKey TEXT`).catch(() => {});
-        await sqlAsync(`ALTER TABLE messages ADD COLUMN vendorAddress TEXT`).catch(() => {});
+        // These may fail if columns already exist, that's OK
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN subject TEXT`);
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN originalOrder TEXT`);
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN direction TEXT DEFAULT 'sent'`);
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN vendorPublicKey TEXT`);
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN vendorAddress TEXT`);
         
-        dbReady = true;
-        console.log('Shop DB initialized');
+        // Verify table exists
+        const verifyResult = await sqlAsync(`SELECT COUNT(*) as cnt FROM messages`);
+        console.log('Verify messages table:', JSON.stringify(verifyResult));
+        
+        if (verifyResult && verifyResult.status) {
+            dbReady = true;
+            console.log('Shop DB initialized successfully');
+        } else {
+            console.error('Shop DB verification failed:', verifyResult?.error);
+        }
     } catch (err) {
         console.error('Shop DB init error:', err);
     }
