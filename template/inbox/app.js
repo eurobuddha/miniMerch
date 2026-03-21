@@ -52,11 +52,20 @@ function getState99Data(state) {
 
 // ============ DATABASE FUNCTIONS (SQL only, no MDS.file) ============
 
+// Wrap MDS.sql in a Promise
+function sqlAsync(command) {
+    return new Promise((resolve) => {
+        MDS.sql(command, (result) => {
+            resolve(result);
+        });
+    });
+}
+
 async function initDB() {
     if (dbReady) return;
     try {
         // Create table with all columns
-        await MDS.sql(
+        await sqlAsync(
             `CREATE TABLE IF NOT EXISTS messages (` +
             `id INTEGER PRIMARY KEY AUTOINCREMENT,` +
             `randomid TEXT UNIQUE,` +
@@ -69,10 +78,10 @@ async function initDB() {
         );
         
         // Migration: Add columns if they don't exist (for existing installs)
-        try { await MDS.sql(`ALTER TABLE messages ADD COLUMN originalRef TEXT`); } catch (e) {}
-        try { await MDS.sql(`ALTER TABLE messages ADD COLUMN originalOrder TEXT`); } catch (e) {}
-        try { await MDS.sql(`ALTER TABLE messages ADD COLUMN originalProduct TEXT`); } catch (e) {}
-        try { await MDS.sql(`ALTER TABLE messages ADD COLUMN direction TEXT DEFAULT 'received'`); } catch (e) {}
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN originalRef TEXT`).catch(() => {});
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN originalOrder TEXT`).catch(() => {});
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN originalProduct TEXT`).catch(() => {});
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN direction TEXT DEFAULT 'received'`).catch(() => {});
         
         dbReady = true;
         console.log('Inbox DB initialized');
@@ -89,7 +98,7 @@ async function saveMessageToDb(message) {
         }
         
         // Check if already exists
-        const existsResp = await MDS.sql(`SELECT id FROM messages WHERE randomid = ${escapeSQL(message.randomid)}`);
+        const existsResp = await sqlAsync(`SELECT id FROM messages WHERE randomid = ${escapeSQL(message.randomid)}`);
         if (existsResp && existsResp.status && existsResp.rows && existsResp.rows.length > 0) {
             console.log('saveMessageToDb: message already exists, randomid:', message.randomid);
             return true; // Already saved
@@ -114,13 +123,13 @@ async function saveMessageToDb(message) {
         
         console.log('saveMessageToDb SQL:', sql.substring(0, 200) + '...');
         
-        const result = await MDS.sql(sql);
+        const result = await sqlAsync(sql);
         
         if (result && result.status) {
             console.log('saveMessageToDb SUCCESS: randomid:', message.randomid, 'direction:', message.direction);
             return true;
         } else {
-            console.error('saveMessageToDb FAILED:', result?.error || 'unknown error', 'randomid:', message.randomid);
+            console.error('saveMessageToDb FAILED:', result?.error || JSON.stringify(result), 'randomid:', message.randomid);
             return false;
         }
     } catch (err) {
@@ -131,7 +140,7 @@ async function saveMessageToDb(message) {
 
 async function loadMessagesFromDb() {
     try {
-        const resp = await MDS.sql(`SELECT * FROM messages ORDER BY timestamp DESC`);
+        const resp = await sqlAsync(`SELECT * FROM messages ORDER BY timestamp DESC`);
         console.log('loadMessagesFromDb: found', resp?.rows?.length || 0, 'messages');
         if (resp && resp.status && resp.rows) {
             return resp.rows.map(row => ({
@@ -166,7 +175,7 @@ async function loadMessagesFromDb() {
 async function isMessageStored(randomid) {
     if (!randomid) return false;
     try {
-        const resp = await MDS.sql(`SELECT randomid FROM messages WHERE randomid = ${escapeSQL(randomid)}`);
+        const resp = await sqlAsync(`SELECT randomid FROM messages WHERE randomid = ${escapeSQL(randomid)}`);
         return resp && resp.status && resp.rows && resp.rows.length > 0;
     } catch (err) {
         return false;
@@ -175,9 +184,10 @@ async function isMessageStored(randomid) {
 
 async function updateMessageInDb(message) {
     try {
-        await MDS.sql(
+        const result = await sqlAsync(
             `UPDATE messages SET read = ${message.read ? 1 : 0} WHERE randomid = ${escapeSQL(message.randomid)}`
         );
+        console.log('updateMessageInDb:', message.randomid, 'read:', message.read, 'result:', result?.status);
     } catch (err) {
         console.error('updateMessageInDb error:', err);
     }

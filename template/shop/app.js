@@ -97,11 +97,20 @@ function getState99Data(state) {
 
 // ============ DATABASE FUNCTIONS (SQL only, no MDS.file) ============
 
+// Wrap MDS.sql in a Promise
+function sqlAsync(command) {
+    return new Promise((resolve) => {
+        MDS.sql(command, (result) => {
+            resolve(result);
+        });
+    });
+}
+
 async function initDB() {
     if (dbReady) return;
     try {
         // Create tables with all columns
-        await MDS.sql(
+        await sqlAsync(
             `CREATE TABLE IF NOT EXISTS messages (` +
             `id INTEGER PRIMARY KEY AUTOINCREMENT,` +
             `randomid TEXT UNIQUE,` +
@@ -112,16 +121,16 @@ async function initDB() {
             `buyerPublicKey TEXT, vendorPublicKey TEXT, vendorAddress TEXT,` +
             `subject TEXT, originalOrder TEXT)`
         );
-        await MDS.sql(
+        await sqlAsync(
             `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`
         );
         
         // Migration: Add columns if they don't exist (for existing installs)
-        try { await MDS.sql(`ALTER TABLE messages ADD COLUMN subject TEXT`); } catch (e) {}
-        try { await MDS.sql(`ALTER TABLE messages ADD COLUMN originalOrder TEXT`); } catch (e) {}
-        try { await MDS.sql(`ALTER TABLE messages ADD COLUMN direction TEXT DEFAULT 'sent'`); } catch (e) {}
-        try { await MDS.sql(`ALTER TABLE messages ADD COLUMN vendorPublicKey TEXT`); } catch (e) {}
-        try { await MDS.sql(`ALTER TABLE messages ADD COLUMN vendorAddress TEXT`); } catch (e) {}
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN subject TEXT`).catch(() => {});
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN originalOrder TEXT`).catch(() => {});
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN direction TEXT DEFAULT 'sent'`).catch(() => {});
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN vendorPublicKey TEXT`).catch(() => {});
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN vendorAddress TEXT`).catch(() => {});
         
         dbReady = true;
         console.log('Shop DB initialized');
@@ -132,7 +141,7 @@ async function initDB() {
 
 async function saveSetting(key, value) {
     try {
-        await MDS.sql(`INSERT OR REPLACE INTO settings (key, value) VALUES (${escapeSQL(key)}, ${escapeSQL(value)})`);
+        await sqlAsync(`INSERT OR REPLACE INTO settings (key, value) VALUES (${escapeSQL(key)}, ${escapeSQL(value)})`);
     } catch (err) {
         console.error('saveSetting error:', err);
     }
@@ -140,7 +149,7 @@ async function saveSetting(key, value) {
 
 async function loadSetting(key) {
     try {
-        const resp = await MDS.sql(`SELECT value FROM settings WHERE key = ${escapeSQL(key)}`);
+        const resp = await sqlAsync(`SELECT value FROM settings WHERE key = ${escapeSQL(key)}`);
         if (resp && resp.status && resp.rows && resp.rows.length > 0) {
             return resp.rows[0].value;
         }
@@ -158,7 +167,7 @@ async function saveMessageToDb(message) {
         }
         
         // Check if already exists
-        const existsResp = await MDS.sql(`SELECT id FROM messages WHERE randomid = ${escapeSQL(message.randomid)}`);
+        const existsResp = await sqlAsync(`SELECT id FROM messages WHERE randomid = ${escapeSQL(message.randomid)}`);
         if (existsResp && existsResp.status && existsResp.rows && existsResp.rows.length > 0) {
             console.log('saveMessageToDb: message already exists, randomid:', message.randomid);
             return true; // Already saved
@@ -183,13 +192,13 @@ async function saveMessageToDb(message) {
         
         console.log('saveMessageToDb SQL:', sql.substring(0, 200) + '...');
         
-        const result = await MDS.sql(sql);
+        const result = await sqlAsync(sql);
         
         if (result && result.status) {
             console.log('saveMessageToDb SUCCESS: randomid:', message.randomid, 'direction:', message.direction);
             return true;
         } else {
-            console.error('saveMessageToDb FAILED:', result?.error || 'unknown error', 'randomid:', message.randomid);
+            console.error('saveMessageToDb FAILED:', result?.error || JSON.stringify(result), 'randomid:', message.randomid);
             return false;
         }
     } catch (err) {
@@ -200,7 +209,7 @@ async function saveMessageToDb(message) {
 
 async function updateMessageReadStatus(randomid, read) {
     try {
-        const result = await MDS.sql(`UPDATE messages SET read = ${read ? 1 : 0} WHERE randomid = ${escapeSQL(randomid)}`);
+        const result = await sqlAsync(`UPDATE messages SET read = ${read ? 1 : 0} WHERE randomid = ${escapeSQL(randomid)}`);
         console.log('updateMessageReadStatus:', randomid, 'read:', read, 'result:', result?.status);
         return result && result.status;
     } catch (err) {
@@ -211,7 +220,7 @@ async function updateMessageReadStatus(randomid, read) {
 
 async function loadMessagesFromDb() {
     try {
-        const resp = await MDS.sql(`SELECT * FROM messages ORDER BY timestamp DESC`);
+        const resp = await sqlAsync(`SELECT * FROM messages ORDER BY timestamp DESC`);
         console.log('loadMessagesFromDb: found', resp?.rows?.length || 0, 'messages');
         if (resp && resp.status && resp.rows) {
             return resp.rows.map(row => ({
@@ -246,7 +255,7 @@ async function loadMessagesFromDb() {
 async function isMessageStored(randomid) {
     if (!randomid) return false;
     try {
-        const resp = await MDS.sql(`SELECT randomid FROM messages WHERE randomid = ${escapeSQL(randomid)}`);
+        const resp = await sqlAsync(`SELECT randomid FROM messages WHERE randomid = ${escapeSQL(randomid)}`);
         return resp && resp.status && resp.rows && resp.rows.length > 0;
     } catch (err) {
         return false;
