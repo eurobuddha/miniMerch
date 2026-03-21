@@ -1333,7 +1333,6 @@ function renderShop() {
         <div class="product-card">
             <div class="product-image-container">
                 <img id="product-image" src="item.jpg" alt="Product" class="product-image">
-                <div class="product-badge">Fresh</div>
             </div>
             
             <div class="product-info">
