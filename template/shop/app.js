@@ -46,17 +46,20 @@ function escapeSQL(val) {
 
 function saveFile(key, data) {
     return new Promise((resolve) => {
+        console.log('saveFile(' + key + '): saving data of length', data ? data.length : 0);
         if (typeof MDS === 'undefined' || !MDS.file) {
+            console.log('saveFile(' + key + '): MDS not available, using localStorage');
             localStorage.setItem(key, data);
             resolve();
             return;
         }
         MDS.file.save(key, data, (response) => {
+            console.log('saveFile(' + key + '): MDS response:', response?.status ? 'success' : 'failed', JSON.stringify(response).substring(0, 100));
             if (response && response.status) {
                 fileReady = true;
                 resolve();
             } else {
-                console.error('saveFile failed for', key, response);
+                console.error('saveFile(' + key + '): MDS failed, using localStorage fallback');
                 localStorage.setItem(key, data);
                 resolve();
             }
@@ -67,32 +70,42 @@ function saveFile(key, data) {
 function loadFile(key) {
     return new Promise((resolve) => {
         if (typeof MDS === 'undefined' || !MDS.file) {
+            console.log('loadFile(' + key + '): MDS not available, using localStorage');
             resolve(localStorage.getItem(key));
             return;
         }
         MDS.file.load(key, (response) => {
+            console.log('loadFile(' + key + '): MDS response status:', response?.status, 'response.response type:', typeof response?.response);
             if (response && response.status && response.response != null) {
                 fileReady = true;
                 // MDS returns wrapper: {action:"LOAD", file:"...", data:"actual content"}
                 // Extract the actual data from response.response.data
                 let data = response.response;
+                console.log('loadFile(' + key + '): raw response.response:', typeof data === 'string' ? data.substring(0, 100) : JSON.stringify(data).substring(0, 100));
                 if (typeof data === 'object' && data !== null && 'data' in data) {
                     data = data.data;
+                    console.log('loadFile(' + key + '): extracted .data:', typeof data === 'string' ? data.substring(0, 100) : JSON.stringify(data).substring(0, 100));
                 }
                 if (typeof data === 'string') {
+                    console.log('loadFile(' + key + '): returning string of length', data.length);
                     resolve(data);
                 } else if (data != null) {
                     try {
-                        resolve(JSON.stringify(data));
+                        const str = JSON.stringify(data);
+                        console.log('loadFile(' + key + '): returning stringified object of length', str.length);
+                        resolve(str);
                     } catch (e) {
+                        console.log('loadFile(' + key + '): stringify failed, returning null');
                         resolve(null);
                     }
                 } else {
+                    console.log('loadFile(' + key + '): data is null after extraction');
                     resolve(null);
                 }
             } else {
-                console.log('loadFile: MDS load failed/unavailable for', key, 'trying localStorage');
+                console.log('loadFile(' + key + '): MDS load failed/unavailable, response:', JSON.stringify(response).substring(0, 200));
                 const local = localStorage.getItem(key);
+                console.log('loadFile(' + key + '): localStorage fallback:', local ? 'found ' + local.length + ' chars' : 'null');
                 resolve(local);
             }
         });
