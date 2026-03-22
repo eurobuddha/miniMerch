@@ -95,13 +95,12 @@ body {
     to { transform: rotate(360deg); }
 }
 
-/* Carousel */
+/* ── Carousel / Responsive wrapper ─────────────────────────────────────────── */
 .carousel-wrapper {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 0 0.25rem;
+    align-items: flex-start;
+    gap: 0.25rem;
+    width: 100%;
 }
 
 .carousel-track {
@@ -109,8 +108,11 @@ body {
     min-width: 0;
 }
 
+/* Arrows hidden by default (grid mode) — JS shows them in carousel mode */
 .carousel-arrow {
+    display: none;
     flex-shrink: 0;
+    align-self: center;
     background: var(--bg-white);
     border: 1px solid var(--border);
     border-radius: 50%;
@@ -122,7 +124,6 @@ body {
     cursor: pointer;
     box-shadow: var(--shadow-sm);
     transition: background 0.15s, color 0.15s, box-shadow 0.15s;
-    display: flex;
     align-items: center;
     justify-content: center;
     user-select: none;
@@ -140,8 +141,9 @@ body {
     transform: scale(0.93);
 }
 
+/* Dots hidden by default (grid mode) */
 .carousel-dots {
-    display: flex;
+    display: none;
     justify-content: center;
     gap: 0.5rem;
     padding: 0.75rem 0 0.25rem;
@@ -163,25 +165,39 @@ body {
     transform: scale(1.3);
 }
 
-/* Main Content */
+/* ── Main content & product grid ────────────────────────────────────────────── */
 .main-content {
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    min-height: calc(100vh - 180px);
-    padding: 2rem;
+    width: 100%;
 }
 
-/* Product Card */
+/* Responsive grid: auto-fit fills as many columns as fit at ≥280px each */
+.product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    padding: 1.5rem;
+    max-width: 1600px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Card hidden in carousel mode (toggled by JS) */
+.carousel-hidden {
+    display: none !important;
+}
+
+/* ── Product Card ────────────────────────────────────────────────────────────── */
 .product-card {
     background: var(--bg-white);
     border-radius: var(--radius-lg);
     padding: 0;
-    max-width: 420px;
     width: 100%;
     box-shadow: var(--shadow-md);
     border: 1px solid var(--border);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .product-card::before {
@@ -199,7 +215,8 @@ body {
 
 .product-image {
     width: 100%;
-    height: 320px;
+    aspect-ratio: 4 / 3;
+    height: auto;
     object-fit: cover;
     display: block;
     transition: transform 0.4s ease;
@@ -904,27 +921,51 @@ body {
 }
 
 /* Mobile Responsive */
-@media (max-width: 480px) {
+/* ── Narrow / carousel mode (≤599px) ───────────────────────────────────────── */
+@media (max-width: 599px) {
     .header {
         padding: 0.75rem 1rem;
     }
-    
+
     .logo h1 {
         font-size: 1.25rem;
     }
-    
-    .main-content {
-        padding: 1rem;
+
+    /* Single-column grid = carousel layout */
+    .product-grid {
+        grid-template-columns: 1fr;
+        padding: 0.75rem;
+        gap: 0;
     }
-    
+
+    /* Restore max card width in carousel mode */
+    .product-card {
+        max-width: 480px;
+        margin: 0 auto;
+        width: 100%;
+    }
+
+    /* Show arrows in carousel mode (JS controls display:none/flex per arrow) */
+    /* — arrows are shown/hidden by JS; CSS just defines their flex display */
+    .carousel-arrow {
+        display: flex;
+    }
+
+    /* Show dots row */
+    .carousel-dots {
+        display: flex;
+    }
+
+    /* Restore fixed image height for tall phone screens */
     .product-image {
+        aspect-ratio: unset;
         height: 260px;
     }
-    
+
     .size-options {
         grid-template-columns: repeat(2, 1fr);
     }
-    
+
     .buy-button {
         font-size: 0.95rem;
         flex-direction: column;
@@ -1528,7 +1569,7 @@ body {
     margin-right: 0.5rem;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 599px) {
     .header {
         flex-wrap: wrap;
         gap: 0.5rem;

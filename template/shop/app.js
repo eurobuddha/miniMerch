@@ -638,17 +638,18 @@ function updateCartBadge() {
     badge.classList.toggle('hidden', totalQty === 0);
 }
 
-function addToCart() {
-    const p = PRODUCT;
+function addToCartByIndex(i) {
+    const p = PRODUCTS[i];
+    const state = getCardState(i);
     let sizeId, sizeLabel, unitPrice;
 
     if (p.mode === 'units') {
-        sizeId = 'units_' + selectedQuantity;
-        sizeLabel = `${selectedQuantity} unit${selectedQuantity > 1 ? 's' : ''}`;
+        sizeId = 'units_' + state.selectedQuantity;
+        sizeLabel = `${state.selectedQuantity} unit${state.selectedQuantity > 1 ? 's' : ''}`;
         unitPrice = p.pricePerUnit;
     } else {
-        sizeId = selectedSize;
-        const size = p.sizes.find(s => s.id === selectedSize);
+        sizeId = state.selectedSize;
+        const size = p.sizes.find(s => s.id === state.selectedSize);
         sizeLabel = `${size.name} (${size.weight}g)`;
         unitPrice = p.pricePerGram * size.weight;
     }
@@ -656,17 +657,17 @@ function addToCart() {
     // Increment quantity if same product+size already in cart
     const existing = cart.find(item => item.productName === p.name && item.sizeId === sizeId);
     if (existing) {
-        existing.quantity += (p.mode === 'units' ? selectedQuantity : 1);
+        existing.quantity += (p.mode === 'units' ? state.selectedQuantity : 1);
         existing.lineTotal = existing.unitPrice * existing.quantity;
     } else {
         cart.push({
             productName: p.name,
-            productIndex: currentProductIndex,
+            productIndex: i,
             sizeId,
             sizeLabel,
-            quantity: p.mode === 'units' ? selectedQuantity : 1,
+            quantity: p.mode === 'units' ? state.selectedQuantity : 1,
             unitPrice,
-            lineTotal: unitPrice * (p.mode === 'units' ? selectedQuantity : 1),
+            lineTotal: unitPrice * (p.mode === 'units' ? state.selectedQuantity : 1),
             mode: p.mode,
             image: p.image
         });
@@ -675,17 +676,19 @@ function addToCart() {
     updateCartBadge();
 
     // Flash the button
-    const btn = document.getElementById('buy-btn');
+    const btn = document.getElementById(`buy-btn-${i}`);
     if (btn) {
-        const originalText = btn.querySelector('.btn-text').textContent;
         btn.querySelector('.btn-text').textContent = '✓ Added!';
         btn.classList.add('added');
         setTimeout(() => {
-            btn.querySelector('.btn-text').textContent = originalText;
+            btn.querySelector('.btn-text').textContent = '+ Add to Cart';
             btn.classList.remove('added');
         }, 1200);
     }
 }
+
+// Legacy alias kept for any remaining internal references
+function addToCart() { addToCartByIndex(currentProductIndex); }
 
 function openCartModal() {
     const modal = document.getElementById('cart-modal');
@@ -1172,129 +1175,188 @@ async function fetchMXPrice() {
 
 // ============ UI FUNCTIONS ============
 
-function initApp() {
-    document.getElementById('product-name').textContent = PRODUCT.name;
-    document.getElementById('product-description').textContent = PRODUCT.description;
-    document.getElementById('product-image').src = PRODUCT.image;
-    document.title = `miniShop - ${PRODUCT.name}`;
-    
-    const isUnitsMode = PRODUCT.mode === 'units';
-    
-    if (isUnitsMode) {
-        document.getElementById('size-selector').classList.add('hidden');
-        document.getElementById('quantity-selector').classList.remove('hidden');
-        document.getElementById('quantity-input').max = PRODUCT.maxUnits;
-        selectedQuantity = 1;
-        document.getElementById('quantity-input').value = 1;
-        document.getElementById('quantity-display').textContent = 1;
-    } else {
-        document.getElementById('size-selector').classList.remove('hidden');
-        document.getElementById('quantity-selector').classList.add('hidden');
-        updateSizeButtons();
+// Per-card state: selectedSize and selectedQuantity keyed by product index
+const cardState = {};
+
+function getCardState(idx) {
+    if (!cardState[idx]) {
+        cardState[idx] = { selectedSize: 'eighth', selectedQuantity: 1 };
     }
-    
-    updatePrices();
-    setupEventListeners();
+    return cardState[idx];
 }
 
-function updateSizeButtons() {
-    const buttons = document.querySelectorAll('.size-btn');
-    buttons.forEach(btn => {
+// ── initAllProducts: initialise every rendered card ──────────────────────────
+function initAllProducts() {
+    PRODUCTS.forEach((_, i) => initProduct(i));
+    // Wire up modal-level listeners once (not per card)
+    setupModalListeners();
+    updateAllPrices();
+}
+
+// ── initProduct: populate one card by index ──────────────────────────────────
+function initProduct(i) {
+    const p = PRODUCTS[i];
+    const el = id => document.getElementById(`${id}-${i}`);
+
+    const nameEl = el('product-name');
+    if (!nameEl) return; // card not in DOM (shouldn't happen)
+
+    nameEl.textContent = p.name;
+    el('product-description').textContent = p.description;
+    el('product-image').src = p.image;
+
+    const state = getCardState(i);
+    const isUnitsMode = p.mode === 'units';
+
+    if (isUnitsMode) {
+        el('size-selector').classList.add('hidden');
+        el('quantity-selector').classList.remove('hidden');
+        el('quantity-input').max = p.maxUnits;
+        el('quantity-input').value = state.selectedQuantity;
+        el('quantity-display').textContent = state.selectedQuantity;
+    } else {
+        el('size-selector').classList.remove('hidden');
+        el('quantity-selector').classList.add('hidden');
+        updateSizeButtonsForCard(i);
+    }
+
+    setupCardListeners(i);
+    updateCardPrice(i);
+}
+
+// ── updateSizeButtonsForCard ─────────────────────────────────────────────────
+function updateSizeButtonsForCard(i) {
+    const p = PRODUCTS[i];
+    const state = getCardState(i);
+    const card = document.querySelector(`.product-card[data-index="${i}"]`);
+    if (!card) return;
+    card.querySelectorAll('.size-btn').forEach(btn => {
         const sizeId = btn.dataset.size;
-        const size = PRODUCT.sizes.find(s => s.id === sizeId);
-        
-        btn.querySelector('.size-weight').textContent = `${size.weight}g`;
+        const size = p.sizes.find(s => s.id === sizeId);
+        if (!size) return;
+        btn.querySelector('.size-weight').textContent = p.mode === 'units' ? `${size.weight}` : `${size.weight}g`;
         btn.querySelector('.size-percent').textContent = `${size.percentage}%`;
-        
-        if (sizeId === selectedSize) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
+        btn.classList.toggle('active', sizeId === state.selectedSize);
     });
 }
 
-function updatePrices() {
-    const isUnitsMode = PRODUCT.mode === 'units';
+// ── updateCardPrice: update the price display for one card ───────────────────
+function updateCardPrice(i) {
+    const p = PRODUCTS[i];
+    const state = getCardState(i);
+    const el = id => document.getElementById(`${id}-${i}`);
+
     let productPrice;
-    
-    if (isUnitsMode) {
-        productPrice = PRODUCT.pricePerUnit * selectedQuantity;
+    if (p.mode === 'units') {
+        productPrice = p.pricePerUnit * state.selectedQuantity;
     } else {
-        const size = PRODUCT.sizes.find(s => s.id === selectedSize);
-        productPrice = PRODUCT.pricePerGram * size.weight;
-    }
-    
-    const priceUsdEl = document.getElementById('price-usd-value');
-    if (priceUsdEl) {
-        priceUsdEl.textContent = `$${productPrice.toFixed(2)} USDT`;
+        const size = p.sizes.find(s => s.id === state.selectedSize);
+        productPrice = size ? p.pricePerGram * size.weight : 0;
     }
 
-    const buyBtnPriceEl = document.querySelector('.buy-button .btn-price');
-    if (buyBtnPriceEl) {
-        buyBtnPriceEl.textContent = `$${productPrice.toFixed(2)} USDT`;
-    }
-    
-    const minimaPriceEl = document.getElementById('price-minima');
-    if (mxToUsdRate > 0 && mxToUsdRate !== 1) {
-        const minimaAmount = productPrice / mxToUsdRate;
-        if (minimaPriceEl) {
-            minimaPriceEl.textContent = `${minimaAmount.toFixed(4)} Minima`;
-        }
-    } else {
-        if (minimaPriceEl) {
+    const priceUsdEl = el('price-usd-value');
+    if (priceUsdEl) priceUsdEl.textContent = `$${productPrice.toFixed(2)} USDT`;
+
+    const btnPriceEl = el('btn-price');
+    if (btnPriceEl) btnPriceEl.textContent = `$${productPrice.toFixed(2)} USDT`;
+
+    const minimaPriceEl = el('price-minima');
+    if (minimaPriceEl) {
+        if (mxToUsdRate > 0 && mxToUsdRate !== 1) {
+            minimaPriceEl.textContent = `${(productPrice / mxToUsdRate).toFixed(4)} Minima`;
+        } else {
             minimaPriceEl.textContent = 'Loading...';
         }
     }
-    
+}
+
+// ── updateAllPrices: refresh every visible card + checkout modal ─────────────
+function updatePrices() {
+    updateAllPrices();
+}
+
+function updateAllPrices() {
+    PRODUCTS.forEach((_, i) => updateCardPrice(i));
     const modal = document.getElementById('modal');
-    if (modal && !modal.classList.contains('hidden')) {
-        updatePayButton();
+    if (modal && !modal.classList.contains('hidden')) updatePayButton();
+}
+
+// ── setupCardListeners: wire up interactive elements on one card ─────────────
+function setupCardListeners(i) {
+    const p = PRODUCTS[i];
+    const state = getCardState(i);
+    const el = id => document.getElementById(`${id}-${i}`);
+    const card = document.querySelector(`.product-card[data-index="${i}"]`);
+    if (!card) return;
+
+    // Size buttons
+    card.querySelectorAll('.size-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            state.selectedSize = btn.dataset.size;
+            // Keep global selectedSize in sync for the active/focused product
+            selectedSize = state.selectedSize;
+            updateSizeButtonsForCard(i);
+            updateCardPrice(i);
+        });
+    });
+
+    // Quantity +/-
+    const qtyMinus = el('qty-minus');
+    const qtyPlus  = el('qty-plus');
+    const qtyInput = el('quantity-input');
+    const qtyDisplay = el('quantity-display');
+
+    if (qtyMinus) {
+        qtyMinus.addEventListener('click', () => {
+            const cur = parseInt(qtyInput.value) || 1;
+            if (cur > 1) {
+                state.selectedQuantity = cur - 1;
+                qtyInput.value = state.selectedQuantity;
+                qtyDisplay.textContent = state.selectedQuantity;
+                selectedQuantity = state.selectedQuantity;
+                updateCardPrice(i);
+            }
+        });
+    }
+    if (qtyPlus) {
+        qtyPlus.addEventListener('click', () => {
+            const cur = parseInt(qtyInput.value) || 1;
+            const max = parseInt(qtyInput.max) || p.maxUnits || 10;
+            if (cur < max) {
+                state.selectedQuantity = cur + 1;
+                qtyInput.value = state.selectedQuantity;
+                qtyDisplay.textContent = state.selectedQuantity;
+                selectedQuantity = state.selectedQuantity;
+                updateCardPrice(i);
+            }
+        });
+    }
+    if (qtyInput) {
+        qtyInput.addEventListener('input', (e) => {
+            let val = parseInt(e.target.value) || 1;
+            const max = parseInt(e.target.max) || p.maxUnits || 10;
+            if (val < 1) val = 1;
+            if (val > max) val = max;
+            state.selectedQuantity = val;
+            selectedQuantity = val;
+            qtyDisplay.textContent = val;
+            updateCardPrice(i);
+        });
+    }
+
+    // Add to Cart button
+    const buyBtn = el('buy-btn');
+    if (buyBtn) {
+        buyBtn.addEventListener('click', () => addToCartByIndex(i));
     }
 }
 
-function setupEventListeners() {
-    document.querySelectorAll('.size-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            selectedSize = btn.dataset.size;
-            updateSizeButtons();
-            updatePrices();
-        });
-    });
-    
-    document.getElementById('qty-minus').addEventListener('click', () => {
-        const input = document.getElementById('quantity-input');
-        const current = parseInt(input.value) || 1;
-        if (current > 1) {
-            selectedQuantity = current - 1;
-            input.value = selectedQuantity;
-            document.getElementById('quantity-display').textContent = selectedQuantity;
-            updatePrices();
-        }
-    });
-    
-    document.getElementById('qty-plus').addEventListener('click', () => {
-        const input = document.getElementById('quantity-input');
-        const current = parseInt(input.value) || 1;
-        const max = parseInt(input.max) || 10;
-        if (current < max) {
-            selectedQuantity = current + 1;
-            input.value = selectedQuantity;
-            document.getElementById('quantity-display').textContent = selectedQuantity;
-            updatePrices();
-        }
-    });
-    
-    document.getElementById('quantity-input').addEventListener('input', (e) => {
-        let val = parseInt(e.target.value) || 1;
-        const max = parseInt(e.target.max) || 10;
-        if (val < 1) val = 1;
-        if (val > max) val = max;
-        selectedQuantity = val;
-        document.getElementById('quantity-display').textContent = selectedQuantity;
-        updatePrices();
-    });
-    
+// ── setupModalListeners: one-time wiring for checkout + confirmation modals ──
+let _modalListenersReady = false;
+function setupModalListeners() {
+    if (_modalListenersReady) return;
+    _modalListenersReady = true;
+
     document.querySelectorAll('.shipping-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             selectedShipping = btn.dataset.shipping;
@@ -1302,13 +1364,11 @@ function setupEventListeners() {
             document.querySelectorAll('.shipping-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             updateAddressField();
-            updatePrices();
+            updateAllPrices();
             updateCheckoutSummary();
         });
     });
-    
-    document.getElementById('buy-btn').addEventListener('click', addToCart);
-    
+
     document.querySelectorAll('.payment-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             selectedPaymentMethod = btn.dataset.method;
@@ -1317,17 +1377,20 @@ function setupEventListeners() {
             updatePayButton();
         });
     });
-    
+
     document.querySelector('.modal-close').addEventListener('click', closeModal);
-    
     document.getElementById('postal-address').addEventListener('input', updatePayButton);
     document.getElementById('email-address').addEventListener('input', updatePayButton);
     document.getElementById('pay-btn').addEventListener('click', processPayment);
     document.getElementById('close-confirmation').addEventListener('click', closeConfirmationModal);
-    
     document.getElementById('modal').addEventListener('click', (e) => {
         if (e.target.id === 'modal') closeModal();
     });
+}
+
+// ── Legacy alias so existing code that calls initApp() still works ────────────
+function initApp() {
+    initAllProducts();
 }
 
 function openCheckoutModal() {
@@ -1501,77 +1564,62 @@ function validateVendorAddress() {
 let currentView = 'shop';
 let selectedMessage = null;
 
-function renderShop() {
-    const mainContent = document.querySelector('.main-content');
-    mainContent.innerHTML = `
-        <div class="product-card">
+function renderCardHTML(i) {
+    return `
+        <div class="product-card" data-index="${i}">
             <div class="product-image-container">
-                <img id="product-image" src="item.jpg" alt="Product" class="product-image">
+                <img id="product-image-${i}" src="item.jpg" alt="Product" class="product-image">
             </div>
-            
+
             <div class="product-info">
-                <h2 id="product-name" class="product-name">Loading...</h2>
-                <p id="product-description" class="product-description">Loading product details...</p>
-                
+                <h2 id="product-name-${i}" class="product-name">Loading...</h2>
+                <p id="product-description-${i}" class="product-description">Loading...</p>
+
                 <div class="price-display">
                     <div class="price-usd">
                         <span class="price-label">Price (MXUSDT)</span>
-                        <span id="price-usd-value" class="price-value">$0.00</span>
+                        <span id="price-usd-value-${i}" class="price-value">$0.00</span>
                     </div>
                     <div class="price-crypto">
                         <span class="price-label">in Minima</span>
-                        <span id="price-minima" class="price-value crypto">-- Minima</span>
+                        <span id="price-minima-${i}" class="price-value crypto">-- Minima</span>
                     </div>
                 </div>
             </div>
 
-            <div class="size-selector" id="size-selector">
-                <h3 id="selector-title">Choose Your Size</h3>
+            <div class="size-selector" id="size-selector-${i}">
+                <h3>Choose Your Size</h3>
                 <div class="size-options">
-                    <button class="size-btn" data-size="full">
-                        <span class="size-name">Full</span>
-                        <span class="size-weight">28g</span>
-                        <span class="size-percent">100%</span>
-                    </button>
-                    <button class="size-btn" data-size="half">
-                        <span class="size-name">Half</span>
-                        <span class="size-weight">14g</span>
-                        <span class="size-percent">50%</span>
-                    </button>
-                    <button class="size-btn" data-size="quarter">
-                        <span class="size-name">Quarter</span>
-                        <span class="size-weight">7g</span>
-                        <span class="size-percent">25%</span>
-                    </button>
-                    <button class="size-btn active" data-size="eighth">
-                        <span class="size-name">Eighth</span>
-                        <span class="size-weight">3.5g</span>
-                        <span class="size-percent">12.5%</span>
-                    </button>
+                    <button class="size-btn" data-size="full"><span class="size-name">Full</span><span class="size-weight">28g</span><span class="size-percent">100%</span></button>
+                    <button class="size-btn" data-size="half"><span class="size-name">Half</span><span class="size-weight">14g</span><span class="size-percent">50%</span></button>
+                    <button class="size-btn" data-size="quarter"><span class="size-name">Quarter</span><span class="size-weight">7g</span><span class="size-percent">25%</span></button>
+                    <button class="size-btn active" data-size="eighth"><span class="size-name">Eighth</span><span class="size-weight">3.5g</span><span class="size-percent">12.5%</span></button>
                 </div>
             </div>
 
-            <div class="quantity-selector hidden" id="quantity-selector">
+            <div class="quantity-selector hidden" id="quantity-selector-${i}">
                 <h3>Choose Quantity</h3>
                 <div class="quantity-input">
-                    <button class="qty-btn qty-minus" id="qty-minus">−</button>
-                    <input type="number" id="quantity-input" value="1" min="1" max="10">
-                    <button class="qty-btn qty-plus" id="qty-plus">+</button>
+                    <button class="qty-btn qty-minus" id="qty-minus-${i}">−</button>
+                    <input type="number" id="quantity-input-${i}" value="1" min="1" max="10">
+                    <button class="qty-btn qty-plus" id="qty-plus-${i}">+</button>
                 </div>
-                <p class="quantity-label"><span id="quantity-display">1</span> unit(s)</p>
+                <p class="quantity-label"><span id="quantity-display-${i}">1</span> unit(s)</p>
             </div>
 
-            <button id="buy-btn" class="buy-button">
+            <button id="buy-btn-${i}" class="buy-button">
                 <span class="btn-text">+ Add to Cart</span>
-                <span class="btn-price">$0.00</span>
+                <span id="btn-price-${i}" class="btn-price">$0.00</span>
             </button>
-
-            <div id="loading-indicator" class="loading hidden">
-                <div class="spinner"></div>
-                <span>Loading price...</span>
-            </div>
         </div>
     `;
+}
+
+function renderShop() {
+    const mainContent = document.querySelector('.main-content');
+    mainContent.innerHTML = `<div class="product-grid">${PRODUCTS.map((_, i) => renderCardHTML(i)).join('')}</div>`;
+    // Reset modal listeners flag so they get rebound after DOM replacement
+    _modalListenersReady = false;
 }
 
 function formatTime(timestamp) {
@@ -1918,14 +1966,14 @@ function setupDetailEventListeners() {
 
 function switchView(view) {
     currentView = view;
-    
+
     document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.view === view);
     });
-    
+
     if (view === 'shop') {
         renderShop();
-        initApp();
+        initAllProducts();
         initCarousel();
     } else {
         renderInbox();
@@ -1956,42 +2004,72 @@ function setupNavigation() {
     document.getElementById('cart-btn').addEventListener('click', openCartModal);
 }
 
-// ============ CAROUSEL ============
+// ============ CAROUSEL / RESPONSIVE GRID ============
 
 let currentProductIndex = 0;
+let _carouselMode = false;        // true = narrow (1 card visible), false = grid
+let _carouselListenersAdded = false;
 
-function initCarousel() {
+// matchMedia query — carousel mode below this width
+const CAROUSEL_MQ = window.matchMedia('(max-width: 599px)');
+
+function isCarouselMode() {
+    return CAROUSEL_MQ.matches;
+}
+
+function applyLayoutMode() {
+    _carouselMode = isCarouselMode();
     const total = PRODUCTS.length;
-
-    // Hide arrows and dots if only one product — zero UX change for single-product shops
     const prevBtn = document.getElementById('carousel-prev');
     const nextBtn = document.getElementById('carousel-next');
     const dotsEl  = document.getElementById('carousel-dots');
 
-    if (total <= 1) {
+    if (!_carouselMode || total <= 1) {
+        // Grid mode — show all cards, hide carousel chrome
+        document.querySelectorAll('.product-card').forEach(c => c.classList.remove('carousel-hidden'));
         if (prevBtn) prevBtn.style.display = 'none';
         if (nextBtn) nextBtn.style.display = 'none';
         if (dotsEl)  dotsEl.style.display  = 'none';
-        return;
+    } else {
+        // Carousel mode — show only active card
+        document.querySelectorAll('.product-card').forEach((c, i) => {
+            c.classList.toggle('carousel-hidden', i !== currentProductIndex);
+        });
+        if (prevBtn) prevBtn.style.display = '';
+        if (nextBtn) nextBtn.style.display = '';
+        if (dotsEl)  dotsEl.style.display  = '';
+        renderCarouselDots();
+    }
+}
+
+function initCarousel() {
+    const total = PRODUCTS.length;
+
+    // Wire arrows and touch once only
+    if (!_carouselListenersAdded && total > 1) {
+        _carouselListenersAdded = true;
+
+        const prevBtn = document.getElementById('carousel-prev');
+        const nextBtn = document.getElementById('carousel-next');
+        if (prevBtn) prevBtn.addEventListener('click', () => navigateProduct(-1));
+        if (nextBtn) nextBtn.addEventListener('click', () => navigateProduct(1));
+
+        // Touch swipe on the track
+        let touchStartX = 0;
+        const track = document.querySelector('.carousel-track');
+        if (track) {
+            track.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].clientX; }, { passive: true });
+            track.addEventListener('touchend', e => {
+                const dx = e.changedTouches[0].clientX - touchStartX;
+                if (Math.abs(dx) > 40) navigateProduct(dx < 0 ? 1 : -1);
+            }, { passive: true });
+        }
+
+        // Respond to viewport resize
+        CAROUSEL_MQ.addEventListener('change', applyLayoutMode);
     }
 
-    renderCarouselDots();
-
-    if (prevBtn) prevBtn.addEventListener('click', () => navigateProduct(-1));
-    if (nextBtn) nextBtn.addEventListener('click', () => navigateProduct(1));
-
-    // Touch swipe support
-    let touchStartX = 0;
-    const track = document.querySelector('.carousel-track');
-    if (track) {
-        track.addEventListener('touchstart', (e) => {
-            touchStartX = e.changedTouches[0].clientX;
-        }, { passive: true });
-        track.addEventListener('touchend', (e) => {
-            const dx = e.changedTouches[0].clientX - touchStartX;
-            if (Math.abs(dx) > 40) navigateProduct(dx < 0 ? 1 : -1);
-        }, { passive: true });
-    }
+    applyLayoutMode();
 }
 
 function renderCarouselDots() {
@@ -2001,25 +2079,28 @@ function renderCarouselDots() {
         `<button class="carousel-dot${i === currentProductIndex ? ' active' : ''}" data-index="${i}" aria-label="Product ${i + 1}"></button>`
     ).join('');
     dotsEl.querySelectorAll('.carousel-dot').forEach(dot => {
-        dot.addEventListener('click', () => navigateProduct(parseInt(dot.dataset.index) - currentProductIndex));
+        dot.addEventListener('click', () => {
+            const target = parseInt(dot.dataset.index);
+            navigateProduct(target - currentProductIndex);
+        });
     });
 }
 
 function navigateProduct(direction) {
     const total = PRODUCTS.length;
     currentProductIndex = (currentProductIndex + direction + total) % total;
-
-    // Update the global PRODUCT alias so all existing logic works unchanged
+    // Keep global PRODUCT alias in sync
     // eslint-disable-next-line no-global-assign
     PRODUCT = PRODUCTS[currentProductIndex];
 
-    // Reset per-product UI state
-    selectedSize = 'eighth';
-    selectedQuantity = 1;
-
-    renderShop();
-    initApp();
-    renderCarouselDots();
+    if (_carouselMode) {
+        // Carousel mode: just toggle visibility — no DOM re-render needed
+        document.querySelectorAll('.product-card').forEach((c, i) => {
+            c.classList.toggle('carousel-hidden', i !== currentProductIndex);
+        });
+        renderCarouselDots();
+    }
+    // Grid mode: all cards already visible — nothing to do
 }
 
 // ============ MDS INITIALIZATION ============
@@ -2046,7 +2127,7 @@ MDS.init(async (msg) => {
         
         setupNavigation();
         renderShop();
-        initApp();
+        initAllProducts();
         initCarousel();
         
         // Scan for replies
