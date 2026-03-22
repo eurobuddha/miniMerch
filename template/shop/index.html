@@ -28,6 +28,39 @@
         </div>
     </header>
 
+    <!-- Cart Modal -->
+    <div id="cart-modal" class="modal hidden">
+        <div class="modal-content cart-modal-content">
+            <button class="modal-close" id="cart-modal-close">&times;</button>
+            <div class="modal-header">
+                <h2>🛒 Your Cart</h2>
+            </div>
+
+            <div id="cart-empty" class="cart-empty hidden">
+                <p>Your cart is empty.</p>
+                <p>Browse the shop and tap <strong>Add to Cart</strong> on any product.</p>
+            </div>
+
+            <div id="cart-items-list"></div>
+
+            <div id="cart-totals" class="cart-totals hidden">
+                <div class="summary-item">
+                    <span>Items subtotal:</span>
+                    <span id="cart-items-subtotal">$0.00</span>
+                </div>
+                <div class="summary-item total">
+                    <span>Shipping:</span>
+                    <span id="cart-shipping-note">Calculated at checkout</span>
+                </div>
+            </div>
+
+            <div id="cart-actions" class="cart-actions hidden">
+                <button id="cart-clear-btn" class="cart-clear-btn">Remove All</button>
+                <button id="cart-checkout-btn" class="pay-button cart-checkout-btn">Checkout &rarr;</button>
+            </div>
+        </div>
+    </div>
+
     <div class="carousel-wrapper">
         <button class="carousel-arrow carousel-prev" id="carousel-prev" aria-label="Previous product">&#8249;</button>
         <div class="carousel-track">
@@ -48,12 +81,9 @@
             </div>
 
             <div class="checkout-summary">
+                <div id="checkout-cart-lines"></div>
                 <div class="summary-item">
-                    <span>Size:</span>
-                    <span id="summary-size">Eighth (3.5g)</span>
-                </div>
-                <div class="summary-item">
-                    <span>Product:</span>
+                    <span>Items subtotal:</span>
                     <span id="summary-product">$0.00 USDT</span>
                 </div>
                 <div class="summary-item">
@@ -61,10 +91,6 @@
                     <span id="summary-shipping">$0.00 USDT</span>
                 </div>
                 <div class="summary-item total">
-                    <span>Subtotal:</span>
-                    <span id="summary-subtotal">$0.00 USDT</span>
-                </div>
-                <div class="summary-item">
                     <span>Total (USDT):</span>
                     <span id="summary-usd">$0.00 USDT</span>
                 </div>
@@ -114,10 +140,16 @@
             </div>
 
             <div class="postal-address">
-                <h3 id="address-heading">📍 Postal Address</h3>
-                <textarea id="postal-address" placeholder="Enter your full postal address for delivery..." rows="4"></textarea>
-                <input type="email" id="email-address" class="hidden" placeholder="Enter your email address...">
-                <p id="address-note" class="address-note">This will be recorded with your payment transaction</p>
+                <div id="postal-address-section">
+                    <h3>📍 Postal Address</h3>
+                    <textarea id="postal-address" placeholder="Enter your full postal address for delivery..." rows="3"></textarea>
+                </div>
+                <div id="email-address-section" style="margin-top:0.75rem;">
+                    <h3>📧 Email Address</h3>
+                    <input type="email" id="email-address" placeholder="Enter your email address...">
+                    <p class="address-note" id="email-note">Required for digital items in your cart</p>
+                </div>
+                <p id="address-note" class="address-note">Your delivery details are encrypted and only visible to the vendor</p>
             </div>
 
             <div id="payment-section" class="payment-section">

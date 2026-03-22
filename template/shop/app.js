@@ -37,6 +37,10 @@ let pendingPaymentUid = null; // UID of pending payment command
 let pendingReplyData = null; // Track pending reply for when confirmed
 let pendingReplyUid = null; // UID of pending reply command
 
+// ── Cart state ──────────────────────────────────────────────────────────────
+// Each item: { productName, productIndex, sizeId, sizeLabel, quantity, unitPrice, lineTotal, mode, image }
+let cart = [];
+
 function escapeSQL(val) {
     if (val == null) return 'NULL';
     return "'" + String(val).replace(/'/g, "''") + "'";
@@ -601,46 +605,187 @@ async function sendBuyerReply() {
     }
 }
 
+// ============ CART ============
+
+function cartItemsSubtotal() {
+    return cart.reduce((sum, item) => sum + item.lineTotal, 0);
+}
+
+function cartHasPhysicalItem() {
+    // All products are physical unless their shipping is forced digital elsewhere.
+    // We determine this at checkout time based on user's shipping choice.
+    // Here we just always allow the physical shipping option — the fee logic
+    // lives in cartShippingFee().
+    return true;
+}
+
+function cartShippingFee() {
+    if (selectedShipping === 'digital') return 0;
+    if (selectedShipping === 'uk') return 5;
+    if (selectedShipping === 'intl') return 20;
+    return 0;
+}
+
+function cartGrandTotal() {
+    return cartItemsSubtotal() + cartShippingFee();
+}
+
+function updateCartBadge() {
+    const badge = document.getElementById('cart-badge');
+    if (!badge) return;
+    const totalQty = cart.reduce((sum, item) => sum + item.quantity, 0);
+    badge.textContent = totalQty;
+    badge.classList.toggle('hidden', totalQty === 0);
+}
+
+function addToCart() {
+    const p = PRODUCT;
+    let sizeId, sizeLabel, unitPrice;
+
+    if (p.mode === 'units') {
+        sizeId = 'units_' + selectedQuantity;
+        sizeLabel = `${selectedQuantity} unit${selectedQuantity > 1 ? 's' : ''}`;
+        unitPrice = p.pricePerUnit;
+    } else {
+        sizeId = selectedSize;
+        const size = p.sizes.find(s => s.id === selectedSize);
+        sizeLabel = `${size.name} (${size.weight}g)`;
+        unitPrice = p.pricePerGram * size.weight;
+    }
+
+    // Increment quantity if same product+size already in cart
+    const existing = cart.find(item => item.productName === p.name && item.sizeId === sizeId);
+    if (existing) {
+        existing.quantity += (p.mode === 'units' ? selectedQuantity : 1);
+        existing.lineTotal = existing.unitPrice * existing.quantity;
+    } else {
+        cart.push({
+            productName: p.name,
+            productIndex: currentProductIndex,
+            sizeId,
+            sizeLabel,
+            quantity: p.mode === 'units' ? selectedQuantity : 1,
+            unitPrice,
+            lineTotal: unitPrice * (p.mode === 'units' ? selectedQuantity : 1),
+            mode: p.mode,
+            image: p.image
+        });
+    }
+
+    updateCartBadge();
+
+    // Flash the button
+    const btn = document.getElementById('buy-btn');
+    if (btn) {
+        const originalText = btn.querySelector('.btn-text').textContent;
+        btn.querySelector('.btn-text').textContent = '✓ Added!';
+        btn.classList.add('added');
+        setTimeout(() => {
+            btn.querySelector('.btn-text').textContent = originalText;
+            btn.classList.remove('added');
+        }, 1200);
+    }
+}
+
+function openCartModal() {
+    const modal = document.getElementById('cart-modal');
+    const emptyEl = document.getElementById('cart-empty');
+    const listEl = document.getElementById('cart-items-list');
+    const totalsEl = document.getElementById('cart-totals');
+    const actionsEl = document.getElementById('cart-actions');
+    const subtotalEl = document.getElementById('cart-items-subtotal');
+
+    if (cart.length === 0) {
+        emptyEl.classList.remove('hidden');
+        listEl.innerHTML = '';
+        totalsEl.classList.add('hidden');
+        actionsEl.classList.add('hidden');
+    } else {
+        emptyEl.classList.add('hidden');
+        listEl.innerHTML = cart.map((item, idx) => `
+            <div class="cart-item" data-index="${idx}">
+                <div class="cart-item-info">
+                    <span class="cart-item-name">${item.productName}</span>
+                    <span class="cart-item-detail">${item.sizeLabel}${item.quantity > 1 && item.mode !== 'units' ? ' &times; ' + item.quantity : ''}</span>
+                </div>
+                <div class="cart-item-right">
+                    <span class="cart-item-price">$${item.lineTotal.toFixed(2)}</span>
+                    <button class="cart-remove-btn" data-index="${idx}" aria-label="Remove">&times;</button>
+                </div>
+            </div>
+        `).join('');
+        subtotalEl.textContent = `$${cartItemsSubtotal().toFixed(2)} USDT`;
+        totalsEl.classList.remove('hidden');
+        actionsEl.classList.remove('hidden');
+    }
+
+    modal.classList.remove('hidden');
+
+    // Wire remove buttons
+    listEl.querySelectorAll('.cart-remove-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.index);
+            cart.splice(idx, 1);
+            updateCartBadge();
+            openCartModal(); // re-render
+        });
+    });
+
+    document.getElementById('cart-clear-btn').onclick = () => {
+        cart = [];
+        updateCartBadge();
+        openCartModal();
+    };
+
+    document.getElementById('cart-checkout-btn').onclick = () => {
+        closeCartModal();
+        openCheckoutModal();
+    };
+
+    document.getElementById('cart-modal-close').onclick = closeCartModal;
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeCartModal(); });
+}
+
+function closeCartModal() {
+    document.getElementById('cart-modal').classList.add('hidden');
+}
+
 // ============ PAYMENT PROCESSING ============
 
 async function processPayment() {
+    if (cart.length === 0) {
+        showPaymentStatus('Your cart is empty', 'error');
+        return;
+    }
+
     const postalAddress = document.getElementById('postal-address').value.trim();
     const emailAddress = document.getElementById('email-address').value.trim();
-    const isUnitsMode = PRODUCT.mode === 'units';
-    let productPrice;
-    let sizeLabel;
-    
-    if (isUnitsMode) {
-        productPrice = PRODUCT.pricePerUnit * selectedQuantity;
-        sizeLabel = `${selectedQuantity} unit${selectedQuantity > 1 ? 's' : ''}`;
-    } else {
-        const size = PRODUCT.sizes.find(s => s.id === selectedSize);
-        productPrice = PRODUCT.pricePerGram * size.weight;
-        sizeLabel = `${size.name} (${size.weight}g)`;
-    }
-    
-    const totalPrice = productPrice + shippingFee;
-    
-    let deliveryInfo;
+
+    // Validate delivery info
     if (selectedShipping === 'digital') {
         if (!emailAddress.includes('@')) {
             showPaymentStatus('Please enter a valid email address', 'error');
             return;
         }
-        deliveryInfo = emailAddress;
     } else {
         if (postalAddress.length < 10) {
             showPaymentStatus('Please enter a complete postal address', 'error');
             return;
         }
-        deliveryInfo = postalAddress;
     }
-    
+
+    // Build delivery string — include both if physical+email provided
+    const deliveryInfo = selectedShipping === 'digital'
+        ? emailAddress
+        : (emailAddress.includes('@') ? `${postalAddress} | email: ${emailAddress}` : postalAddress);
+
+    const totalPrice = cartGrandTotal();
+
     const payBtn = document.getElementById('pay-btn');
     payBtn.disabled = true;
-    
+
     showPaymentStatus('Preparing transaction...', 'pending');
-    
+
     try {
         if (!vendorPublicKey) {
             showPaymentStatus('Error: Vendor public key not configured', 'error');
@@ -648,7 +793,6 @@ async function processPayment() {
             return;
         }
 
-        // Get buyer's public key if not already fetched
         if (!buyerPublicKey) {
             showPaymentStatus('Getting buyer info...', 'pending');
             buyerPublicKey = await getMyPublicKey();
@@ -657,90 +801,130 @@ async function processPayment() {
                 payBtn.disabled = false;
                 return;
             }
-            console.log('Buyer public key:', buyerPublicKey.substring(0, 20) + '...');
         }
-        
-        let sendAmount;
-        let tokenName;
-        if (selectedPaymentMethod === 'USDT') {
-            sendAmount = totalPrice;
-            tokenName = 'USDT';
-        } else {
-            sendAmount = totalPrice / mxToUsdRate * 1.10;
-            tokenName = 'Minima';
+
+        const tokenName = selectedPaymentMethod === 'USDT' ? 'USDT' : 'Minima';
+        const sendAmount = selectedPaymentMethod === 'USDT'
+            ? totalPrice
+            : totalPrice / mxToUsdRate * 1.10;
+
+        // One shared order reference for the whole cart
+        lastOrderReference = generateOrderReference('ORDER');
+
+        // ── Send one encrypted ORDER message per cart item ──────────────────
+        showPaymentStatus(`Sending ${cart.length} order message${cart.length > 1 ? 's' : ''}...`, 'pending');
+
+        for (let i = 0; i < cart.length; i++) {
+            const item = cart[i];
+            const itemRef = `${lastOrderReference}-${i + 1}`;
+
+            const orderPayload = {
+                type: 'ORDER',
+                randomid: generateRandomId(),
+                ref: itemRef,
+                cartRef: lastOrderReference,
+                cartItem: `${i + 1} of ${cart.length}`,
+                product: item.productName,
+                size: item.sizeLabel,
+                amount: item.lineTotal.toFixed(2),
+                currency: tokenName,
+                delivery: deliveryInfo,
+                shipping: selectedShipping,
+                timestamp: Date.now(),
+                buyerPublicKey: buyerPublicKey
+            };
+
+            console.log(`Encrypting order ${i + 1}/${cart.length}:`, item.productName);
+            const encryptResult = await encryptMessage(vendorPublicKey, orderPayload);
+            if (!encryptResult || !encryptResult.encrypted) {
+                throw new Error(`Failed to encrypt order for ${item.productName}`);
+            }
+
+            const state = {};
+            state[99] = encryptResult.encrypted;
+            const command = 'send address:' + MINIMERCH_ADDRESS + ' amount:0.0001 tokenid:' + TOKEN_IDS.MINIMA + ' state:' + JSON.stringify(state);
+
+            const orderResponse = await new Promise((resolve) => MDS.cmd(command, resolve));
+            console.log(`Order ${i + 1} response:`, JSON.stringify(orderResponse));
+
+            if (orderResponse && orderResponse.pending) {
+                // Node is in read mode — store first pending and bail;
+                // user must approve then retry. Full pending flow not practical for multi-item.
+                pendingOrderUid = orderResponse.pendinguid;
+                pendingOrderData = {
+                    randomid: orderPayload.randomid,
+                    ref: itemRef,
+                    product: item.productName,
+                    size: item.sizeLabel,
+                    amount: item.lineTotal.toFixed(2),
+                    currency: tokenName,
+                    delivery: deliveryInfo,
+                    shipping: selectedShipping,
+                    buyerPublicKey: buyerPublicKey,
+                    sendAmount: sendAmount
+                };
+                showPaymentStatus('Order pending approval — check Pending Actions to confirm', 'pending');
+                payBtn.disabled = false;
+                payBtn.querySelector('.btn-text').textContent = '⏳ Pending...';
+                return;
+            }
+
+            if (!orderResponse || !orderResponse.status) {
+                throw new Error(orderResponse?.error || `Order TX failed for ${item.productName}`);
+            }
+
+            // Save each order locally
+            await addMessage({
+                id: Date.now().toString() + i,
+                randomid: orderPayload.randomid,
+                ref: itemRef,
+                type: 'ORDER',
+                product: item.productName,
+                size: item.sizeLabel,
+                amount: item.lineTotal.toFixed(2),
+                currency: tokenName,
+                delivery: deliveryInfo,
+                shipping: selectedShipping,
+                timestamp: Date.now(),
+                coinid: orderResponse?.response?.txnid || 'confirmed',
+                read: true,
+                direction: 'sent',
+                buyerPublicKey: buyerPublicKey
+            });
         }
-        
-        lastOrderReference = generateOrderReference(PRODUCT.name);
-        
-        const orderPayload = {
-            type: 'ORDER',
-            randomid: generateRandomId(), // ChainMail pattern for deduplication
-            ref: lastOrderReference,
-            product: PRODUCT.name,
-            size: sizeLabel,
-            amount: totalPrice.toFixed(2),
-            currency: tokenName,
-            delivery: deliveryInfo,
-            shipping: selectedShipping,
-            timestamp: Date.now(),
-            buyerPublicKey: buyerPublicKey
-        };
-        
-        showPaymentStatus('Encrypting order...', 'pending');
-        console.log('Order payload:', JSON.stringify(orderPayload));
-        
-        const encryptResult = await encryptMessage(vendorPublicKey, orderPayload);
-        
-        if (!encryptResult || !encryptResult.encrypted) {
-            throw new Error('Failed to encrypt order');
-        }
-        
-        showPaymentStatus('Sending encrypted order...', 'pending');
-        
-        const state = {};
-        state[99] = encryptResult.encrypted;
-        
-        // ChainMail pattern: Send to fixed MINIMERCH_ADDRESS
-        const command = 'send address:' + MINIMERCH_ADDRESS + ' amount:0.0001 tokenid:' + TOKEN_IDS.MINIMA + ' state:' + JSON.stringify(state);
-        console.log('Sending order to MINIMERCH_ADDRESS');
-        
-        // Store order data in case this goes to pending
-        pendingOrderData = {
-            randomid: orderPayload.randomid,
-            ref: lastOrderReference,
-            product: PRODUCT.name,
-            size: sizeLabel,
-            amount: totalPrice.toFixed(2),
-            currency: tokenName,
-            delivery: deliveryInfo,
-            shipping: selectedShipping,
-            buyerPublicKey: buyerPublicKey,
-            sendAmount: sendAmount
-        };
-        
-        const orderResponse = await new Promise((resolve) => {
-            MDS.cmd(command, resolve);
+
+        // ── Send one payment for the combined total ──────────────────────────
+        showPaymentStatus('Sending payment...', 'pending');
+
+        pendingPaymentData = { ref: lastOrderReference };
+
+        const payCommand = selectedPaymentMethod === 'USDT'
+            ? `send address:${vendorAddress} amount:${sendAmount.toFixed(8)} tokenid:${TOKEN_IDS.USDT}`
+            : `send address:${vendorAddress} amount:${sendAmount.toFixed(8)} tokenid:${TOKEN_IDS.MINIMA}`;
+
+        console.log('Payment command:', payCommand);
+
+        MDS.cmd(payCommand, (payResponse) => {
+            console.log('Payment Response:', JSON.stringify(payResponse));
+
+            if (payResponse && payResponse.pending) {
+                pendingPaymentUid = payResponse.pendinguid;
+                showPaymentStatus('Payment pending approval — check Pending Actions', 'pending');
+                if (payBtn) { payBtn.disabled = false; payBtn.querySelector('.btn-text').textContent = '⏳ Payment Pending...'; }
+                return;
+            }
+
+            if (payResponse && payResponse.status) {
+                completePayment(payResponse, payBtn);
+                // Clear cart on successful payment
+                cart = [];
+                updateCartBadge();
+            } else {
+                showPaymentStatus((payResponse?.error || 'Payment may have failed') + ' (orders were sent)', 'error');
+                if (payBtn) { payBtn.disabled = false; payBtn.querySelector('.btn-text').textContent = '💸 Pay Now'; }
+            }
         });
-        
-        console.log('Order Response:', JSON.stringify(orderResponse));
-        
-        // Check if response is pending (node in read mode)
-        if (orderResponse && orderResponse.pending) {
-            pendingOrderUid = orderResponse.pendinguid;
-            console.log('Order is PENDING - UID:', pendingOrderUid, '- waiting for user approval');
-            showPaymentStatus('Order pending approval - check Pending Actions to confirm', 'pending');
-            payBtn.disabled = false;
-            payBtn.querySelector('.btn-text').textContent = '⏳ Pending...';
-            return; // Exit - will continue when MDS_PENDING fires and we check status
-        }
-        
-        if (!orderResponse || !orderResponse.status) {
-            throw new Error(orderResponse?.error || 'Order TX failed');
-        }
-        
-        // Order sent successfully - continue with payment
-        await completeOrderAndPayment(orderResponse, payBtn);
-        
+
     } catch (error) {
         console.error('Payment error:', error);
         payBtn.disabled = false;
@@ -1114,7 +1298,7 @@ function setupEventListeners() {
         });
     });
     
-    document.getElementById('buy-btn').addEventListener('click', openCheckoutModal);
+    document.getElementById('buy-btn').addEventListener('click', addToCart);
     
     document.querySelectorAll('.payment-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -1138,29 +1322,31 @@ function setupEventListeners() {
 }
 
 function openCheckoutModal() {
+    if (cart.length === 0) return;
+
     const modal = document.getElementById('modal');
-    const isUnitsMode = PRODUCT.mode === 'units';
-    let productPrice, sizeLabel;
-    
-    if (isUnitsMode) {
-        productPrice = PRODUCT.pricePerUnit * selectedQuantity;
-        sizeLabel = `${selectedQuantity} unit${selectedQuantity > 1 ? 's' : ''}`;
-    } else {
-        const size = PRODUCT.sizes.find(s => s.id === selectedSize);
-        productPrice = PRODUCT.pricePerGram * size.weight;
-        sizeLabel = `${size.name} (${size.weight}g)`;
-    }
-    
-    const totalPrice = productPrice + shippingFee;
+    const itemsSubtotal = cartItemsSubtotal();
+    const fee = cartShippingFee();
+    const totalPrice = itemsSubtotal + fee;
     const minimaTotal = totalPrice / mxToUsdRate * 1.10;
-    
-    document.getElementById('modal-product').textContent = PRODUCT.name;
-    document.getElementById('summary-size').textContent = sizeLabel;
-    document.getElementById('summary-product').textContent = `$${productPrice.toFixed(2)} USDT`;
-    document.getElementById('summary-shipping').textContent = `$${shippingFee.toFixed(2)} USDT`;
-    document.getElementById('summary-subtotal').textContent = `${totalPrice.toFixed(2)} USDT`;
+
+    // Render per-item lines in checkout summary
+    const linesEl = document.getElementById('checkout-cart-lines');
+    if (linesEl) {
+        linesEl.innerHTML = cart.map(item => `
+            <div class="summary-item checkout-line">
+                <span>${item.productName} &mdash; ${item.sizeLabel}${item.quantity > 1 && item.mode !== 'units' ? ' &times;' + item.quantity : ''}</span>
+                <span>$${item.lineTotal.toFixed(2)}</span>
+            </div>
+        `).join('');
+    }
+
+    const itemCount = cart.reduce((s, i) => s + i.quantity, 0);
+    document.getElementById('modal-product').textContent = `${itemCount} item${itemCount > 1 ? 's' : ''}`;
+    document.getElementById('summary-product').textContent = `$${itemsSubtotal.toFixed(2)} USDT`;
+    document.getElementById('summary-shipping').textContent = fee === 0 ? 'Free' : `$${fee.toFixed(2)} USDT`;
     document.getElementById('summary-usd').textContent = `$${totalPrice.toFixed(2)} USDT`;
-    
+
     if (mxToUsdRate > 0 && mxToUsdRate !== 1) {
         document.getElementById('summary-minima').innerHTML = `${minimaTotal.toFixed(4)} Minima<br><span class="slippage-note">(+10% slippage)</span>`;
         document.getElementById('pay-amount').textContent = `${totalPrice.toFixed(2)} USD = ${minimaTotal.toFixed(4)} Minima`;
@@ -1168,36 +1354,28 @@ function openCheckoutModal() {
         document.getElementById('summary-minima').textContent = 'Loading...';
         document.getElementById('pay-amount').textContent = '--';
     }
-    
+
     document.getElementById('postal-address').value = '';
     document.getElementById('email-address').value = '';
     updateAddressField();
     updatePayButton();
-    
+
     modal.classList.remove('hidden');
 }
 
 function updateCheckoutSummary() {
     const modal = document.getElementById('modal');
     if (modal.classList.contains('hidden')) return;
-    
-    const isUnitsMode = PRODUCT.mode === 'units';
-    let productPrice;
-    
-    if (isUnitsMode) {
-        productPrice = PRODUCT.pricePerUnit * selectedQuantity;
-    } else {
-        const size = PRODUCT.sizes.find(s => s.id === selectedSize);
-        productPrice = PRODUCT.pricePerGram * size.weight;
-    }
-    
-    const totalPrice = productPrice + shippingFee;
+
+    const itemsSubtotal = cartItemsSubtotal();
+    const fee = cartShippingFee();
+    const totalPrice = itemsSubtotal + fee;
     const minimaTotal = totalPrice / mxToUsdRate * 1.10;
-    
-    document.getElementById('summary-shipping').textContent = `$${shippingFee.toFixed(2)} USDT`;
-    document.getElementById('summary-subtotal').textContent = `${totalPrice.toFixed(2)} USDT`;
+
+    document.getElementById('summary-product').textContent = `$${itemsSubtotal.toFixed(2)} USDT`;
+    document.getElementById('summary-shipping').textContent = fee === 0 ? 'Free' : `$${fee.toFixed(2)} USDT`;
     document.getElementById('summary-usd').textContent = `$${totalPrice.toFixed(2)} USDT`;
-    
+
     if (mxToUsdRate > 0 && mxToUsdRate !== 1) {
         document.getElementById('summary-minima').innerHTML = `${minimaTotal.toFixed(4)} Minima<br><span class="slippage-note">(+10% slippage)</span>`;
         document.getElementById('pay-amount').textContent = `${totalPrice.toFixed(2)} USD = ${minimaTotal.toFixed(4)} Minima`;
@@ -1210,21 +1388,17 @@ function closeModal() {
 }
 
 function updateAddressField() {
-    const postalAddress = document.getElementById('postal-address');
-    const emailAddress = document.getElementById('email-address');
-    const addressHeading = document.getElementById('address-heading');
-    const addressNote = document.getElementById('address-note');
-    
+    const postalSection = document.getElementById('postal-address-section');
+    const emailSection = document.getElementById('email-address-section');
+
     if (selectedShipping === 'digital') {
-        postalAddress.classList.add('hidden');
-        emailAddress.classList.remove('hidden');
-        addressHeading.textContent = '📧 Email Address';
-        addressNote.textContent = 'Your download link will be sent to this email';
+        // Digital only — hide postal, show email
+        if (postalSection) postalSection.classList.add('hidden');
+        if (emailSection) emailSection.classList.remove('hidden');
     } else {
-        postalAddress.classList.remove('hidden');
-        emailAddress.classList.add('hidden');
-        addressHeading.textContent = '📍 Postal Address';
-        addressNote.textContent = 'This will be recorded with your payment transaction';
+        // Physical (uk/intl) — show both so mixed carts work
+        if (postalSection) postalSection.classList.remove('hidden');
+        if (emailSection) emailSection.classList.remove('hidden');
     }
 }
 
@@ -1233,16 +1407,30 @@ function updatePayButton() {
     const emailAddress = document.getElementById('email-address').value.trim();
     const payBtn = document.getElementById('pay-btn');
     const payAmount = document.getElementById('pay-amount');
-    
-    const isUnitsMode = PRODUCT.mode === 'units';
-    let productPrice;
-    
-    if (isUnitsMode) {
-        productPrice = PRODUCT.pricePerUnit * selectedQuantity;
+
+    const totalPrice = cartGrandTotal();
+
+    let isAddressValid;
+    if (selectedShipping === 'digital') {
+        isAddressValid = emailAddress.includes('@') && emailAddress.length > 0;
     } else {
-        const size = PRODUCT.sizes.find(s => s.id === selectedSize);
-        productPrice = PRODUCT.pricePerGram * size.weight;
+        // Physical: postal required; email optional (nice-to-have for mixed carts)
+        isAddressValid = postalAddress.length >= 10;
     }
+
+    if (mxToUsdRate > 0) {
+        if (selectedPaymentMethod === 'USDT') {
+            payAmount.textContent = `${totalPrice.toFixed(2)} USD = ${totalPrice.toFixed(2)} USDT`;
+        } else {
+            const minimaAmount = totalPrice / mxToUsdRate * 1.10;
+            payAmount.textContent = `${totalPrice.toFixed(2)} USD = ${minimaAmount.toFixed(4)} Minima`;
+        }
+        payBtn.disabled = !isAddressValid || cart.length === 0;
+    } else {
+        payAmount.textContent = '--';
+        payBtn.disabled = true;
+    }
+}
     
     const totalPrice = productPrice + shippingFee;
     
@@ -1388,7 +1576,7 @@ function renderShop() {
             </div>
 
             <button id="buy-btn" class="buy-button">
-                <span class="btn-text">🛒 Buy Now</span>
+                <span class="btn-text">+ Add to Cart</span>
                 <span class="btn-price">$0.00</span>
             </button>
 
@@ -1766,24 +1954,20 @@ function setupNavigation() {
             <h1>miniMerch</h1>
         </div>
         <nav class="nav-tabs">
-            <button class="nav-btn active" data-view="shop">🛍️ Shop</button>
-            <button class="nav-btn" data-view="inbox" id="nav-inbox">📬 Mailbox</button>
+            <button class="nav-btn active" data-view="shop">Shop</button>
+            <button class="nav-btn" data-view="inbox" id="nav-inbox">Mailbox</button>
         </nav>
-        <div class="header-decoration">
-            <svg class="peace-sign" viewBox="0 0 100 100" width="40" height="40">
-                <circle cx="50" cy="50" r="45" fill="none" stroke="#FFD700" stroke-width="4"/>
-                <line x1="50" y1="5" x2="50" y2="50" stroke="#FFD700" stroke-width="4"/>
-                <line x1="50" y1="50" x2="85" y2="75" stroke="#FFD700" stroke-width="4"/>
-                <line x1="50" y1="50" x2="15" y2="75" stroke="#FFD700" stroke-width="4"/>
-                <circle cx="50" cy="50" r="20" fill="#FFD700"/>
-                <circle cx="50" cy="50" r="12" fill="#2D5016"/>
-            </svg>
-        </div>
+        <button class="cart-btn" id="cart-btn" aria-label="Open cart">
+            🛒
+            <span class="cart-badge hidden" id="cart-badge">0</span>
+        </button>
     `;
-    
+
     document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.addEventListener('click', () => switchView(btn.dataset.view));
     });
+
+    document.getElementById('cart-btn').addEventListener('click', openCartModal);
 }
 
 // ============ CAROUSEL ============
