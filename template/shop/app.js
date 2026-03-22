@@ -898,7 +898,7 @@ async function processPayment() {
             delivery: deliveryInfo,
             shipping: selectedShipping,
             timestamp: Date.now(),
-            coinid: orderResponse?.response?.txnid || '',
+            coinid: orderResponse?.response?.txnid || 'confirmed',
             read: true,
             direction: 'sent',
             buyerPublicKey: buyerPublicKey,
@@ -958,7 +958,7 @@ async function loadLastPrice() {
 
 // Complete order after it's confirmed (either immediately or after pending approval)
 async function completeOrderAndPayment(orderResponse, payBtn) {
-    const orderTxid = orderResponse?.response?.txnid || '';
+    const orderTxid = orderResponse?.response?.txnid || 'confirmed';
     console.log('Order sent with txid:', orderTxid);
     
     if (!pendingOrderData) {
@@ -1032,17 +1032,21 @@ async function completeOrderAndPayment(orderResponse, payBtn) {
     pendingOrderData = null;
 }
 
-// Update the coinid on a saved message (used to stamp payment TXID onto the ORDER record)
-async function updateMessageCoinid(ref, txid) {
+// Stamp the real payment TXID onto the saved ORDER record.
+// Uses MDS.sql directly (non-blocking, no async/await, no currentMessages mutation).
+function stampPaymentTxid(ref, txid) {
     if (!txid || txid === 'confirmed' || !ref) return;
-    try {
-        await sqlAsync(`UPDATE messages SET coinid = '${escapeSQL(txid)}' WHERE ref = '${escapeSQL(ref)}'`);
-        console.log('Updated coinid for ref', ref, '→', txid.substring(0, 20) + '...');
-        // Refresh in-memory message list
-        currentMessages = await loadMessagesFromDb();
-    } catch (e) {
-        console.error('updateMessageCoinid failed:', e);
-    }
+    const safeRef  = ref.replace(/'/g, "''");
+    const safeTxid = txid.replace(/'/g, "''");
+    MDS.sql(`UPDATE messages SET coinid = '${safeTxid}' WHERE ref = '${safeRef}'`, (res) => {
+        if (res && res.status) {
+            // Silently update the in-memory record so detail view reflects it immediately
+            const msg = currentMessages.find(m => m.ref === ref && m.direction === 'sent');
+            if (msg) msg.coinid = txid;
+        } else {
+            console.warn('stampPaymentTxid failed:', res?.error);
+        }
+    });
 }
 
 // Complete payment after confirmation
@@ -1056,14 +1060,14 @@ function completePayment(payResponse, payBtn) {
     }
     showPaymentStatus('Transaction sent! ✓', 'success');
 
-    // Stamp the real payment TXID onto the ORDER record in the DB
-    updateMessageCoinid(ref, txid);
-
+    // Stamp real payment TXID onto the order record (non-blocking, safe)
+    stampPaymentTxid(ref, txid);
+    
     setTimeout(() => {
         closeModal();
         showConfirmation(txid, ref);
     }, 3000);
-
+    
     pendingPaymentData = null;
 }
 
@@ -1537,8 +1541,8 @@ const COPY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13
 const CHECK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
 function truncateTxid(id) {
-    if (!id || id === '-' || id === 'Pending...' || id.length <= 16) return id;
-    return id.slice(0, 8) + '…' + id.slice(-6);
+    // No truncation — return full value; CSS word-break handles wrapping
+    return id;
 }
 
 function wireCopyBtn(btnId, text) {
@@ -1572,8 +1576,8 @@ function showConfirmation(txid, orderRef) {
     const fullTxid = txid || 'Pending...';
     const fullRef  = orderRef || lastOrderReference || 'N/A';
 
-    document.getElementById('tx-id').textContent    = truncateTxid(fullTxid);
-    document.getElementById('order-ref').textContent = truncateTxid(fullRef);
+    document.getElementById('tx-id').textContent    = fullTxid;
+    document.getElementById('order-ref').textContent = fullRef;
 
     // Wire copy buttons
     wireCopyBtn('copy-txid-btn',    fullTxid);
@@ -1868,7 +1872,7 @@ function renderMessageDetail(msg) {
             <div class="message-tx">
                 <span class="tx-label">TX ID:</span>
                 <div class="tx-copy-row">
-                    <span class="tx-id" id="detail-txid" data-full="${msg.coinid}">${truncateTxid(msg.coinid)}</span>
+                    <span class="tx-id" id="detail-txid">${msg.coinid}</span>
                     <button class="copy-btn" id="detail-copy-txid-btn" title="Copy transaction ID"></button>
                 </div>
             </div>` : ''}
@@ -1918,7 +1922,7 @@ function renderMessageDetail(msg) {
             <div class="message-tx">
                 <span class="tx-label">Payment TX ID:</span>
                 <div class="tx-copy-row">
-                    <span class="tx-id" id="detail-txid" data-full="${msg.coinid || ''}">${msg.coinid ? truncateTxid(msg.coinid) : 'Awaiting payment confirmation…'}</span>
+                    <span class="tx-id" id="detail-txid">${msg.coinid || 'Awaiting payment confirmation…'}</span>
                     ${msg.coinid ? `<button class="copy-btn" id="detail-copy-txid-btn" title="Copy transaction ID"></button>` : ''}
                 </div>
             </div>
@@ -1992,7 +1996,7 @@ function setupDetailEventListeners() {
     // Wire TXID copy button if present in the detail view
     const txidEl = document.getElementById('detail-txid');
     if (txidEl) {
-        wireCopyBtn('detail-copy-txid-btn', txidEl.dataset.full || txidEl.textContent);
+        wireCopyBtn('detail-copy-txid-btn', txidEl.textContent);
     }
     
     // Mark as Read button

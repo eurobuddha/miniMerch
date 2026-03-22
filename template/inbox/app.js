@@ -714,8 +714,8 @@ const COPY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13
 const CHECK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
 function truncateTxid(id) {
-    if (!id || id === '-' || id.length <= 16) return id;
-    return id.slice(0, 8) + '…' + id.slice(-6);
+    // No truncation — return full value; CSS word-break handles wrapping
+    return id;
 }
 
 function wireCopyBtn(btnId, text) {
@@ -747,10 +747,7 @@ function wireCopyBtn(btnId, text) {
 
 function setTxid(fullId) {
     const el = document.getElementById('modal-txid');
-    if (el) {
-        el.textContent = truncateTxid(fullId) || '-';
-        el.dataset.full = fullId || '';
-    }
+    if (el) el.textContent = fullId || '-';
     wireCopyBtn('copy-txid-btn', fullId);
 }
 
