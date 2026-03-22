@@ -348,6 +348,8 @@ async function processIncomingMessage(coin) {
     
     if (decrypted.type === 'ORDER') {
         // New order from buyer
+        // cartItems is present for multi-product cart orders; store as JSON in originalOrder
+        const cartItemsJson = decrypted.cartItems ? JSON.stringify(decrypted.cartItems) : null;
         const message = {
             id: Date.now().toString(),
             randomid: randomid,
@@ -364,7 +366,8 @@ async function processIncomingMessage(coin) {
             read: false,
             direction: 'received',
             buyerPublicKey: decrypted.buyerPublicKey || decrypted._senderPublicKey || '',
-            buyerAddress: decrypted.buyerAddress || ''
+            buyerAddress: decrypted.buyerAddress || '',
+            originalOrder: cartItemsJson || ''
         };
         await addMessage(message);
         
@@ -812,8 +815,32 @@ function showMessageDetail(msg) {
     document.getElementById('modal-title').textContent = 'Order: ' + msg.ref;
     document.getElementById('modal-direction').textContent = !msg.read ? '📨 Unread' : '📧 Read';
     document.getElementById('modal-txid').textContent = msg.coinid ? msg.coinid.substring(0, 30) + '...' : '-';
-    
-    document.getElementById('modal-info').innerHTML = `
+
+    // Try to parse cart items if this is a multi-product order
+    let cartItemsHtml = '';
+    let cartItems = null;
+    try {
+        if (msg.originalOrder) cartItems = JSON.parse(msg.originalOrder);
+    } catch (e) { cartItems = null; }
+
+    if (cartItems && Array.isArray(cartItems) && cartItems.length > 0) {
+        // Multi-item cart order — render each line
+        const rows = cartItems.map(item =>
+            `<div class="cart-order-line">
+                <span class="cart-order-name">${item.product}</span>
+                <span class="cart-order-detail">${item.size}${item.quantity > 1 ? ' &times;' + item.quantity : ''}</span>
+                <span class="cart-order-price">$${item.lineTotal}</span>
+            </div>`
+        ).join('');
+        cartItemsHtml = `
+        <div class="info-row">
+            <span class="info-label">Items:</span>
+            <span class="info-value"></span>
+        </div>
+        <div class="cart-order-lines">${rows}</div>`;
+    } else {
+        // Single-product order — legacy display
+        cartItemsHtml = `
         <div class="info-row">
             <span class="info-label">Product:</span>
             <span class="info-value">${msg.product}</span>
@@ -821,9 +848,13 @@ function showMessageDetail(msg) {
         <div class="info-row">
             <span class="info-label">Size:</span>
             <span class="info-value">${msg.size}</span>
-        </div>
+        </div>`;
+    }
+
+    document.getElementById('modal-info').innerHTML = `
+        ${cartItemsHtml}
         <div class="info-row">
-            <span class="info-label">Amount:</span>
+            <span class="info-label">Total:</span>
             <span class="info-value highlight">$${msg.amount} ${msg.currency}</span>
         </div>
         <div class="info-row">

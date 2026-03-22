@@ -811,87 +811,96 @@ async function processPayment() {
         // One shared order reference for the whole cart
         lastOrderReference = generateOrderReference('ORDER');
 
-        // ── Send one encrypted ORDER message per cart item ──────────────────
-        showPaymentStatus(`Sending ${cart.length} order message${cart.length > 1 ? 's' : ''}...`, 'pending');
+        // ── Build cart summary for the combined ORDER payload ────────────────
+        const cartItems = cart.map(item => ({
+            product: item.productName,
+            size: item.sizeLabel,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice.toFixed(2),
+            lineTotal: item.lineTotal.toFixed(2)
+        }));
 
-        for (let i = 0; i < cart.length; i++) {
-            const item = cart[i];
-            const itemRef = `${lastOrderReference}-${i + 1}`;
+        // Human-readable product summary for legacy inbox display
+        const productSummary = cart.map(item =>
+            item.quantity > 1 ? `${item.productName} x${item.quantity}` : item.productName
+        ).join(', ');
 
-            const orderPayload = {
-                type: 'ORDER',
-                randomid: generateRandomId(),
-                ref: itemRef,
-                cartRef: lastOrderReference,
-                cartItem: `${i + 1} of ${cart.length}`,
-                product: item.productName,
-                size: item.sizeLabel,
-                amount: item.lineTotal.toFixed(2),
-                currency: tokenName,
-                delivery: deliveryInfo,
-                shipping: selectedShipping,
-                timestamp: Date.now(),
-                buyerPublicKey: buyerPublicKey
-            };
+        const orderPayload = {
+            type: 'ORDER',
+            randomid: generateRandomId(),
+            ref: lastOrderReference,
+            product: productSummary,             // legacy single-product field
+            cartItems: cartItems,                // full cart array
+            itemCount: cart.reduce((s, i) => s + i.quantity, 0),
+            size: cart.length === 1 ? cart[0].sizeLabel : `${cart.length} items`,
+            amount: cartItemsSubtotal().toFixed(2),
+            currency: tokenName,
+            delivery: deliveryInfo,
+            shipping: selectedShipping,
+            timestamp: Date.now(),
+            buyerPublicKey: buyerPublicKey
+        };
 
-            console.log(`Encrypting order ${i + 1}/${cart.length}:`, item.productName);
-            const encryptResult = await encryptMessage(vendorPublicKey, orderPayload);
-            if (!encryptResult || !encryptResult.encrypted) {
-                throw new Error(`Failed to encrypt order for ${item.productName}`);
-            }
+        showPaymentStatus('Encrypting order...', 'pending');
+        console.log('Order payload:', JSON.stringify(orderPayload));
 
-            const state = {};
-            state[99] = encryptResult.encrypted;
-            const command = 'send address:' + MINIMERCH_ADDRESS + ' amount:0.0001 tokenid:' + TOKEN_IDS.MINIMA + ' state:' + JSON.stringify(state);
-
-            const orderResponse = await new Promise((resolve) => MDS.cmd(command, resolve));
-            console.log(`Order ${i + 1} response:`, JSON.stringify(orderResponse));
-
-            if (orderResponse && orderResponse.pending) {
-                // Node is in read mode — store first pending and bail;
-                // user must approve then retry. Full pending flow not practical for multi-item.
-                pendingOrderUid = orderResponse.pendinguid;
-                pendingOrderData = {
-                    randomid: orderPayload.randomid,
-                    ref: itemRef,
-                    product: item.productName,
-                    size: item.sizeLabel,
-                    amount: item.lineTotal.toFixed(2),
-                    currency: tokenName,
-                    delivery: deliveryInfo,
-                    shipping: selectedShipping,
-                    buyerPublicKey: buyerPublicKey,
-                    sendAmount: sendAmount
-                };
-                showPaymentStatus('Order pending approval — check Pending Actions to confirm', 'pending');
-                payBtn.disabled = false;
-                payBtn.querySelector('.btn-text').textContent = '⏳ Pending...';
-                return;
-            }
-
-            if (!orderResponse || !orderResponse.status) {
-                throw new Error(orderResponse?.error || `Order TX failed for ${item.productName}`);
-            }
-
-            // Save each order locally
-            await addMessage({
-                id: Date.now().toString() + i,
-                randomid: orderPayload.randomid,
-                ref: itemRef,
-                type: 'ORDER',
-                product: item.productName,
-                size: item.sizeLabel,
-                amount: item.lineTotal.toFixed(2),
-                currency: tokenName,
-                delivery: deliveryInfo,
-                shipping: selectedShipping,
-                timestamp: Date.now(),
-                coinid: orderResponse?.response?.txnid || 'confirmed',
-                read: true,
-                direction: 'sent',
-                buyerPublicKey: buyerPublicKey
-            });
+        const encryptResult = await encryptMessage(vendorPublicKey, orderPayload);
+        if (!encryptResult || !encryptResult.encrypted) {
+            throw new Error('Failed to encrypt order');
         }
+
+        showPaymentStatus('Sending order...', 'pending');
+
+        const state = {};
+        state[99] = encryptResult.encrypted;
+        const command = 'send address:' + MINIMERCH_ADDRESS + ' amount:0.0001 tokenid:' + TOKEN_IDS.MINIMA + ' state:' + JSON.stringify(state);
+
+        const orderResponse = await new Promise((resolve) => MDS.cmd(command, resolve));
+        console.log('Order response:', JSON.stringify(orderResponse));
+
+        if (orderResponse && orderResponse.pending) {
+            pendingOrderUid = orderResponse.pendinguid;
+            pendingOrderData = {
+                randomid: orderPayload.randomid,
+                ref: lastOrderReference,
+                product: productSummary,
+                size: orderPayload.size,
+                amount: orderPayload.amount,
+                currency: tokenName,
+                delivery: deliveryInfo,
+                shipping: selectedShipping,
+                buyerPublicKey: buyerPublicKey,
+                sendAmount: sendAmount
+            };
+            showPaymentStatus('Order pending approval — check Pending Actions to confirm', 'pending');
+            payBtn.disabled = false;
+            payBtn.querySelector('.btn-text').textContent = '⏳ Pending...';
+            return;
+        }
+
+        if (!orderResponse || !orderResponse.status) {
+            throw new Error(orderResponse?.error || 'Order TX failed');
+        }
+
+        // Save order locally (full cart stored in originalOrder field)
+        await addMessage({
+            id: Date.now().toString(),
+            randomid: orderPayload.randomid,
+            ref: lastOrderReference,
+            type: 'ORDER',
+            product: productSummary,
+            size: orderPayload.size,
+            amount: orderPayload.amount,
+            currency: tokenName,
+            delivery: deliveryInfo,
+            shipping: selectedShipping,
+            timestamp: Date.now(),
+            coinid: orderResponse?.response?.txnid || 'confirmed',
+            read: true,
+            direction: 'sent',
+            buyerPublicKey: buyerPublicKey,
+            originalOrder: JSON.stringify(cartItems)
+        });
 
         // ── Send one payment for the combined total ──────────────────────────
         showPaymentStatus('Sending payment...', 'pending');

@@ -685,3 +685,41 @@ body {
         transition-duration: 0.01ms !important;
     }
 }
+
+/* Cart order lines in inbox detail view */
+.cart-order-lines {
+    margin: 0.25rem 0 0.75rem 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.cart-order-line {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.45rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.88rem;
+}
+
+.cart-order-line:last-child {
+    border-bottom: none;
+}
+
+.cart-order-name {
+    font-weight: 600;
+    flex: 1;
+    color: var(--text-dark);
+}
+
+.cart-order-detail {
+    color: var(--text-medium);
+    font-size: 0.82rem;
+}
+
+.cart-order-price {
+    font-weight: 600;
+    color: var(--accent);
+    margin-left: auto;
+}
