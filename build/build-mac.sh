@@ -75,8 +75,12 @@ rm "$OUT_DIR/$BINARY_NAME"
 
 echo "✓  .app bundle created: $APP_DIR"
 
-# ── 5. Remove quarantine attribute (so it runs without Gatekeeper prompt) ─────
+# ── 5. Ad-hoc sign (prevents "damaged app" error on other Macs) ──────────────
+echo ""
+echo "✍️   Signing app bundle (ad-hoc)..."
+codesign --force --deep --sign - "$APP_DIR" 2>&1
 xattr -cr "$APP_DIR" 2>/dev/null || true
+echo "✓  Signed"
 
 # ── 6. Create .dmg ───────────────────────────────────────────────────────────
 echo ""
