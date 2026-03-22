@@ -1017,7 +1017,8 @@ body {
 /* Inbox Container */
 .inbox-container {
     width: 100%;
-    max-width: 500px;
+    max-width: 600px;
+    margin: 1.5rem auto;
     background: var(--bg-white);
     border-radius: var(--radius-lg);
     padding: 1.5rem;
