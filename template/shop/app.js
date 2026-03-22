@@ -898,7 +898,7 @@ async function processPayment() {
             delivery: deliveryInfo,
             shipping: selectedShipping,
             timestamp: Date.now(),
-            coinid: orderResponse?.response?.txnid || 'confirmed',
+            coinid: orderResponse?.response?.txnid || '',
             read: true,
             direction: 'sent',
             buyerPublicKey: buyerPublicKey,
@@ -958,7 +958,7 @@ async function loadLastPrice() {
 
 // Complete order after it's confirmed (either immediately or after pending approval)
 async function completeOrderAndPayment(orderResponse, payBtn) {
-    const orderTxid = orderResponse?.response?.txnid || 'confirmed';
+    const orderTxid = orderResponse?.response?.txnid || '';
     console.log('Order sent with txid:', orderTxid);
     
     if (!pendingOrderData) {
@@ -1032,6 +1032,19 @@ async function completeOrderAndPayment(orderResponse, payBtn) {
     pendingOrderData = null;
 }
 
+// Update the coinid on a saved message (used to stamp payment TXID onto the ORDER record)
+async function updateMessageCoinid(ref, txid) {
+    if (!txid || txid === 'confirmed' || !ref) return;
+    try {
+        await sqlAsync(`UPDATE messages SET coinid = '${escapeSQL(txid)}' WHERE ref = '${escapeSQL(ref)}'`);
+        console.log('Updated coinid for ref', ref, '→', txid.substring(0, 20) + '...');
+        // Refresh in-memory message list
+        currentMessages = await loadMessagesFromDb();
+    } catch (e) {
+        console.error('updateMessageCoinid failed:', e);
+    }
+}
+
 // Complete payment after confirmation
 function completePayment(payResponse, payBtn) {
     const txid = payResponse?.response?.txnid || 'confirmed';
@@ -1042,12 +1055,15 @@ function completePayment(payResponse, payBtn) {
         payBtn.classList.add('sent');
     }
     showPaymentStatus('Transaction sent! ✓', 'success');
-    
+
+    // Stamp the real payment TXID onto the ORDER record in the DB
+    updateMessageCoinid(ref, txid);
+
     setTimeout(() => {
         closeModal();
         showConfirmation(txid, ref);
     }, 3000);
-    
+
     pendingPaymentData = null;
 }
 
@@ -1855,8 +1871,7 @@ function renderMessageDetail(msg) {
                     <span class="tx-id" id="detail-txid" data-full="${msg.coinid}">${truncateTxid(msg.coinid)}</span>
                     <button class="copy-btn" id="detail-copy-txid-btn" title="Copy transaction ID"></button>
                 </div>
-            </div>
-            ` : ''}
+            </div>` : ''}
         `;
     }
 
@@ -1900,15 +1915,13 @@ function renderMessageDetail(msg) {
                 </div>
             </div>
 
-            ${msg.coinid ? `
             <div class="message-tx">
-                <span class="tx-label">TX ID:</span>
+                <span class="tx-label">Payment TX ID:</span>
                 <div class="tx-copy-row">
-                    <span class="tx-id" id="detail-txid" data-full="${msg.coinid}">${truncateTxid(msg.coinid)}</span>
-                    <button class="copy-btn" id="detail-copy-txid-btn" title="Copy transaction ID"></button>
+                    <span class="tx-id" id="detail-txid" data-full="${msg.coinid || ''}">${msg.coinid ? truncateTxid(msg.coinid) : 'Awaiting payment confirmation…'}</span>
+                    ${msg.coinid ? `<button class="copy-btn" id="detail-copy-txid-btn" title="Copy transaction ID"></button>` : ''}
                 </div>
             </div>
-            ` : ''}
         `;
     }
 
