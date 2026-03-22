@@ -83,7 +83,8 @@ async function initDB() {
             `message TEXT, timestamp BIGINT, coinid VARCHAR(255),` +
             `"read" INTEGER DEFAULT 0, direction VARCHAR(50) DEFAULT 'received',` +
             `buyerPublicKey TEXT, buyerAddress VARCHAR(255),` +
-            `originalRef VARCHAR(255), originalOrder TEXT, originalProduct TEXT)`
+            `originalRef VARCHAR(255), originalOrder TEXT, originalProduct TEXT,` +
+            `status VARCHAR(50) DEFAULT 'PENDING')`
         );
         console.log('CREATE messages table result:', JSON.stringify(createResult));
         
@@ -93,6 +94,7 @@ async function initDB() {
         await sqlAsync(`ALTER TABLE messages ADD COLUMN originalOrder TEXT`);
         await sqlAsync(`ALTER TABLE messages ADD COLUMN originalProduct TEXT`);
         await sqlAsync(`ALTER TABLE messages ADD COLUMN direction TEXT DEFAULT 'received'`);
+        await sqlAsync(`ALTER TABLE messages ADD COLUMN status VARCHAR(50) DEFAULT 'PENDING'`);
         
         // Verify table exists
         const verifyResult = await sqlAsync(`SELECT COUNT(*) as cnt FROM messages`);
@@ -126,7 +128,7 @@ async function saveMessageToDb(message) {
         const sql = `INSERT INTO messages ` +
             `(randomid, ref, type, product, size, amount, currency, delivery, shipping, message, ` +
             `timestamp, coinid, "read", direction, buyerPublicKey, buyerAddress, ` +
-            `originalRef, originalOrder, originalProduct) ` +
+            `originalRef, originalOrder, originalProduct, status) ` +
             `VALUES (` +
             `${escapeSQL(message.randomid)}, ` +
             `${escapeSQL(message.ref || '')}, ${escapeSQL(message.type || 'ORDER')}, ` +
@@ -138,7 +140,7 @@ async function saveMessageToDb(message) {
             `${escapeSQL(message.direction || 'received')}, ` +
             `${escapeSQL(message.buyerPublicKey || '')}, ${escapeSQL(message.buyerAddress || '')}, ` +
             `${escapeSQL(message.originalRef || '')}, ${escapeSQL(message.originalOrder || '')}, ` +
-            `${escapeSQL(message.originalProduct || '')})`;
+            `${escapeSQL(message.originalProduct || '')}, ${escapeSQL(message.status || 'PENDING')})`;
         
         console.log('saveMessageToDb SQL:', sql.substring(0, 200) + '...');
         
@@ -1039,13 +1041,13 @@ MDS.init(async (msg) => {
     } else if (msg.event === 'MDS_PENDING') {
         // Handle pending action results by matching UID (Wallet pattern)
         console.log('MDS_PENDING:', JSON.stringify(msg.data));
-        
+
         // Match our pending REPLY by UID
         if (pendingReplyUid && msg.data && msg.data.uid === pendingReplyUid) {
             pendingReplyUid = null;
             const statusEl = document.getElementById('reply-status');
             const sendBtn = document.getElementById('send-reply-btn');
-            
+
             if (msg.data.accept && msg.data.result && msg.data.result.status) {
                 console.log('Reply ACCEPTED and succeeded');
                 await completeVendorReply(msg.data.result, statusEl, sendBtn);
@@ -1076,3 +1078,211 @@ MDS.init(async (msg) => {
         }
     }
 });
+
+// ============ ORDER STATUS TRACKING ============
+
+/**
+ * Update message status
+ * @param {string} randomid - Message randomid
+ * @param {string} status - New status (PENDING, PAID, CONFIRMED, SHIPPED, DELIVERED)
+ * @returns {Promise<boolean>} Success status
+ */
+async function updateMessageStatus(randomid, status) {
+    try {
+        const result = await sqlAsync(`UPDATE messages SET status = ${escapeSQL(status)} WHERE randomid = ${escapeSQL(randomid)}`);
+        console.log('updateMessageStatus:', randomid, 'status:', status, 'result:', result?.status);
+
+        // Update in-memory message
+        const msg = currentMessages.find(m => m.randomid === randomid);
+        if (msg) msg.status = status;
+
+        return result && result.status;
+    } catch (err) {
+        console.error('updateMessageStatus error:', err);
+        return false;
+    }
+}
+
+/**
+ * Get status emoji
+ * @param {string} status - Status code
+ * @returns {string} Emoji
+ */
+function getStatusEmoji(status) {
+    const emojis = {
+        'PENDING': '⏳',
+        'PAID': '💳',
+        'CONFIRMED': '✅',
+        'SHIPPED': '🚚',
+        'DELIVERED': '📦'
+    };
+    return emojis[status] || '❓';
+}
+
+/**
+ * Get status label
+ * @param {string} status - Status code
+ * @returns {string} Label
+ */
+function getStatusLabel(status) {
+    return status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : 'Unknown';
+}
+
+// ============ EXPORT FUNCTIONALITY ============
+
+/**
+ * Export messages to JSON
+ * @param {Array} messages - Messages to export
+ * @returns {string} JSON string
+ */
+function exportToJSON(messages) {
+    const data = messages.map(msg => ({
+        reference: msg.ref,
+        type: msg.type,
+        product: msg.product,
+        size: msg.size,
+        amount: msg.amount,
+        currency: msg.currency,
+        shipping: msg.shipping,
+        delivery: msg.delivery,
+        status: msg.status || 'PENDING',
+        timestamp: new Date(msg.timestamp).toISOString(),
+        date: new Date(msg.timestamp).toLocaleDateString(),
+        time: new Date(msg.timestamp).toLocaleTimeString(),
+        coinid: msg.coinid,
+        direction: msg.direction,
+        read: msg.read,
+        buyerPublicKey: msg.buyerPublicKey
+    }));
+
+    return JSON.stringify(data, null, 2);
+}
+
+/**
+ * Export messages to CSV
+ * @param {Array} messages - Messages to export
+ * @returns {string} CSV string
+ */
+function exportToCSV(messages) {
+    const headers = ['Reference', 'Type', 'Product', 'Size', 'Amount', 'Currency', 'Shipping', 'Status', 'Date', 'Time', 'TX ID'];
+
+    const rows = messages.map(msg => [
+        msg.ref,
+        msg.type,
+        msg.product,
+        msg.size,
+        msg.amount,
+        msg.currency,
+        msg.shipping,
+        msg.status || 'PENDING',
+        new Date(msg.timestamp).toLocaleDateString(),
+        new Date(msg.timestamp).toLocaleTimeString(),
+        msg.coinid
+    ]);
+
+    // Escape values with commas
+    const escapedRows = rows.map(row =>
+        row.map(val => {
+            const str = String(val || '');
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return '"' + str.replace(/"/g, '""') + '"';
+            }
+            return str;
+        }).join(',')
+    );
+
+    return [headers.join(','), ...escapedRows].join('\n');
+}
+
+/**
+ * Download data as file
+ * @param {string} data - Data to download
+ * @param {string} filename - Filename
+ * @param {string} mimeType - MIME type
+ */
+function downloadFile(data, filename, mimeType) {
+    const blob = new Blob([data], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+/**
+ * Filter messages by status
+ * @param {string} status - Status filter
+ * @returns {Array} Filtered messages
+ */
+function filterMessagesByStatus(status) {
+    if (!status) return currentMessages.filter(m => m.direction !== 'sent');
+    return currentMessages.filter(m => m.direction !== 'sent' && (m.status || 'PENDING') === status);
+}
+
+// ============ EVENT LISTENERS FOR EXPORT AND FILTER ============
+
+// Export JSON
+function setupExportListeners() {
+    const exportJsonBtn = document.getElementById('export-json-btn');
+    const exportCsvBtn = document.getElementById('export-csv-btn');
+    const statusFilter = document.getElementById('status-filter');
+
+    if (exportJsonBtn) {
+        exportJsonBtn.addEventListener('click', () => {
+            const status = statusFilter?.value;
+            const messages = filterMessagesByStatus(status);
+            const json = exportToJSON(messages);
+            const filename = `minimerch_orders_${new Date().toISOString().split('T')[0]}.json`;
+            downloadFile(json, filename, 'application/json');
+        });
+    }
+
+    if (exportCsvBtn) {
+        exportCsvBtn.addEventListener('click', () => {
+            const status = statusFilter?.value;
+            const messages = filterMessagesByStatus(status);
+            const csv = exportToCSV(messages);
+            const filename = `minimerch_orders_${new Date().toISOString().split('T')[0]}.csv`;
+            downloadFile(csv, filename, 'text/csv');
+        });
+    }
+
+    if (statusFilter) {
+        statusFilter.addEventListener('change', () => {
+            renderInbox();
+        });
+    }
+}
+
+// Update status button
+function setupStatusUpdateListener() {
+    const updateStatusBtn = document.getElementById('update-status-btn');
+    const statusSelector = document.getElementById('status-selector');
+
+    if (updateStatusBtn && statusSelector) {
+        updateStatusBtn.addEventListener('click', async () => {
+            if (!selectedMessage) return;
+
+            const newStatus = statusSelector.value;
+            const success = await updateMessageStatus(selectedMessage.randomid, newStatus);
+
+            if (success) {
+                selectedMessage.status = newStatus;
+                updateStatusBtn.textContent = '✓ Updated';
+                setTimeout(() => {
+                    updateStatusBtn.textContent = 'Update Status';
+                }, 2000);
+                renderInbox();
+            }
+        });
+    }
+}
+
+// Call these after init
+setTimeout(() => {
+    setupExportListeners();
+    setupStatusUpdateListener();
+}, 1000);
