@@ -42,6 +42,23 @@
                 </button>
             </div>
             
+            <div class="inbox-toolbar">
+                <div class="export-actions">
+                    <button class="toolbar-btn" id="export-json-btn" title="Export as JSON">📄 Export JSON</button>
+                    <button class="toolbar-btn" id="export-csv-btn" title="Export as CSV">📊 Export CSV</button>
+                </div>
+                <div class="filter-actions">
+                    <select id="status-filter" class="status-filter">
+                        <option value="">All Status</option>
+                        <option value="PENDING">⏳ Pending</option>
+                        <option value="PAID">💳 Paid</option>
+                        <option value="CONFIRMED">✅ Confirmed</option>
+                        <option value="SHIPPED">🚚 Shipped</option>
+                        <option value="DELIVERED">📦 Delivered</option>
+                    </select>
+                </div>
+            </div>
+
             <div class="inbox-list" id="inbox-list">
                 <div class="empty-inbox">
                     <div class="empty-icon">📭</div>
@@ -68,6 +85,18 @@
             <div class="message-actions">
                 <button class="action-btn" id="copy-address-btn">📋 Copy Delivery Address</button>
                 <button class="action-btn secondary" id="mark-read-btn">✓ Mark as Read</button>
+            </div>
+
+            <div class="status-section" id="status-section">
+                <label>Order Status:</label>
+                <select id="status-selector" class="status-selector">
+                    <option value="PENDING">⏳ Pending</option>
+                    <option value="PAID">💳 Paid</option>
+                    <option value="CONFIRMED">✅ Confirmed</option>
+                    <option value="SHIPPED">🚚 Shipped</option>
+                    <option value="DELIVERED">📦 Delivered</option>
+                </select>
+                <button class="action-btn" id="update-status-btn">Update Status</button>
             </div>
             <div class="reply-action" id="reply-action" style="display: none;">
                 <button class="action-btn reply-btn" id="reply-btn">↩️ Reply to Buyer</button>
