@@ -6,9 +6,13 @@
   "bin": {
     "mini-merch": "./src/index.js"
   },
+  "scripts": {
+    "studio": "node src/studio.js"
+  },
   "files": [
     "src/",
     "template/",
+    "web/",
     "item.jpg",
     "ticket.jpg"
   ],

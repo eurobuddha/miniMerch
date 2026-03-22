@@ -673,6 +673,11 @@ async function runGenerateMulti() {
 async function main() {
     const subcommand = process.argv[2];
 
+    if (subcommand === 'studio') {
+        require('./studio').start();
+        return;
+    }
+
     if (subcommand === 'setup') {
         runSetup();
         return;
@@ -740,6 +745,11 @@ async function main() {
         .command('generate-multi')
         .description('Interactively build a shop with up to 8 products (carousel)')
         .action(async () => await runGenerateMulti());
+
+    program
+        .command('studio')
+        .description('Open the miniMerch Studio web UI to build shops visually')
+        .action(() => require('./studio').start());
 
     program
         .command('config')

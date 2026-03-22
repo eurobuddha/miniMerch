@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>miniMerch Studio</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛒</text></svg>">
+</head>
+<body>
+
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">🛒</span>
+        <span class="logo-text">miniMerch <span class="logo-badge">Studio</span></span>
+      </div>
+      <div id="config-status" class="config-status"></div>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- Tab bar -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="build">Build Shop</button>
+      <button class="tab-btn" data-tab="setup">Vendor Setup</button>
+    </div>
+
+    <!-- ── BUILD TAB ──────────────────────────────────────────────────── -->
+    <section id="tab-build" class="tab-pane active">
+
+      <div class="section-header">
+        <div>
+          <h2>Build Your Shop</h2>
+          <p class="section-subtitle">Add up to 8 products. Drag cards to reorder.</p>
+        </div>
+        <div class="shop-globals">
+          <div class="field-group">
+            <label for="shop-name">Shop name</label>
+            <input type="text" id="shop-name" placeholder="e.g. Claude Bibeau Artworks" maxlength="80">
+          </div>
+          <div class="field-group field-group--sm">
+            <label for="slippage">Minima slippage %</label>
+            <input type="number" id="slippage" value="10" min="0" max="50" step="1">
+          </div>
+        </div>
+      </div>
+
+      <!-- Product cards -->
+      <div id="product-list" class="product-list"></div>
+
+      <div class="add-row">
+        <button id="add-product-btn" class="btn btn-secondary">+ Add Product</button>
+        <span id="product-count-label" class="count-label">1 / 8 products</span>
+      </div>
+
+      <!-- Build button -->
+      <div class="build-row">
+        <button id="build-btn" class="btn btn-primary btn-lg">
+          <span id="build-btn-text">Build Shop</span>
+          <svg id="build-spinner" class="spinner hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
+            <path d="M12 2 A10 10 0 0 1 22 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <div id="build-status" class="build-status hidden"></div>
+
+      <!-- Result panel -->
+      <div id="result-panel" class="result-panel hidden">
+        <div class="result-header">
+          <span class="result-icon">✅</span>
+          <h3>Build complete!</h3>
+        </div>
+        <div class="result-files">
+          <div class="result-file">
+            <div class="result-file-info">
+              <div class="result-file-name" id="shop-filename"></div>
+              <div class="result-file-meta">Give this to buyers</div>
+            </div>
+            <a id="shop-download-btn" href="#" class="btn btn-download">Download Shop</a>
+          </div>
+          <div class="result-file">
+            <div class="result-file-info">
+              <div class="result-file-name">miniMerchInbox.mds.zip</div>
+              <div class="result-file-meta">Install this on your own node</div>
+            </div>
+            <a id="inbox-download-btn" href="#" class="btn btn-download btn-download--secondary">Download Inbox</a>
+          </div>
+        </div>
+        <p class="result-note">Both files are saved to your <code>dist/</code> folder.</p>
+      </div>
+
+    </section>
+
+    <!-- ── SETUP TAB ──────────────────────────────────────────────────── -->
+    <section id="tab-setup" class="tab-pane hidden">
+
+      <div class="section-header">
+        <div>
+          <h2>Vendor Setup</h2>
+          <p class="section-subtitle">One-time configuration saved to <code>~/.mini-merch/config.json</code></p>
+        </div>
+      </div>
+
+      <form id="setup-form" class="setup-form" autocomplete="off">
+
+        <div class="setup-field">
+          <label for="setup-address">Minima Address <span class="required">*</span></label>
+          <p class="field-hint">From Wallet MiniDapp → Receive. Must start with <code>0x</code></p>
+          <input type="text" id="setup-address" placeholder="0x465CA86A9B5756F45DEB667A69B3DBEC1B82B211..." spellcheck="false">
+        </div>
+
+        <div class="setup-field">
+          <label for="setup-pubkey">Maxima Public Key <span class="required">*</span></label>
+          <p class="field-hint">From Terminal MiniDapp → type <code>maxima</code> → copy the <code>mxpublickey</code> value</p>
+          <input type="text" id="setup-pubkey" placeholder="MxG18HGG6FJ..." spellcheck="false">
+        </div>
+
+        <div class="setup-field">
+          <label for="setup-apikey">CoinMarketCap API Key <span class="optional">(optional)</span></label>
+          <p class="field-hint">For real-time Minima pricing. Get a free key at <a href="https://coinmarketcap.com/api/" target="_blank">coinmarketcap.com/api</a></p>
+          <input type="password" id="setup-apikey" placeholder="Leave blank to use default price">
+        </div>
+
+        <div class="setup-field">
+          <label for="setup-inboxpubkey">Inbox Public Key <span class="optional">(optional)</span></label>
+          <p class="field-hint">Separate Maxima key for your inbox node, if different from your vendor key</p>
+          <input type="text" id="setup-inboxpubkey" placeholder="MxG18HGG6FJ..." spellcheck="false">
+        </div>
+
+        <div class="setup-actions">
+          <button type="submit" class="btn btn-primary">Save Configuration</button>
+          <div id="setup-status" class="setup-status"></div>
+        </div>
+
+      </form>
+
+    </section>
+
+  </main>
+
+  <!-- Product card template (cloned by JS) -->
+  <template id="product-card-template">
+    <div class="product-card" draggable="true">
+      <div class="card-header">
+        <div class="drag-handle" title="Drag to reorder">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+            <circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/>
+            <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+            <circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/>
+          </svg>
+        </div>
+        <span class="card-number">Product 1</span>
+        <button class="remove-btn" title="Remove product" type="button">&times;</button>
+      </div>
+
+      <div class="card-body">
+
+        <!-- Left col: fields -->
+        <div class="card-fields">
+
+          <div class="field-row">
+            <div class="field-group field-group--grow">
+              <label>Product name <span class="required">*</span></label>
+              <input type="text" class="f-name" placeholder="e.g. Original Oil Painting" maxlength="120">
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-group">
+              <label>Mode</label>
+              <div class="mode-toggle">
+                <button type="button" class="mode-btn active" data-mode="units">Units</button>
+                <button type="button" class="mode-btn" data-mode="weight">Weight</button>
+              </div>
+            </div>
+            <div class="field-group">
+              <label class="f-price-label">Price per unit (USD)</label>
+              <input type="number" class="f-price" min="0.01" step="0.01" placeholder="1.00">
+            </div>
+            <div class="field-group">
+              <label class="f-qty-label">Max units</label>
+              <input type="number" class="f-qty" min="1" step="1" placeholder="10">
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-group field-group--grow">
+              <label>Description</label>
+              <textarea class="f-desc" rows="2" placeholder="Short product description (optional)" maxlength="300"></textarea>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right col: image -->
+        <div class="card-image-col">
+          <label>Product image</label>
+          <div class="image-drop-zone">
+            <input type="file" class="f-image-input" accept="image/*" tabindex="-1">
+            <div class="drop-placeholder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <p>Drop image here<br>or <span class="browse-link">browse</span></p>
+            </div>
+            <img class="drop-preview hidden" alt="Preview">
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
