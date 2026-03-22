@@ -13,7 +13,7 @@
     <key>CFBundleShortVersionString</key>
     <string>0.2.0</string>
     <key>CFBundleExecutable</key>
-    <string>minimerch-studio</string>
+    <string>launcher</string>
     <key>CFBundleIconFile</key>
     <string>icon</string>
     <key>CFBundlePackageType</key>

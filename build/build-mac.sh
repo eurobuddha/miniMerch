@@ -63,6 +63,18 @@ mkdir -p "$APP_DIR/Contents/Resources"
 cp "$OUT_DIR/$BINARY_NAME" "$APP_DIR/Contents/MacOS/$BINARY_NAME"
 chmod +x "$APP_DIR/Contents/MacOS/$BINARY_NAME"
 
+# Write launcher shell script — macOS needs a real executable as CFBundleExecutable.
+# A pkg binary has no GUI event loop so macOS kills it on double-click.
+# This launcher script keeps the process alive and satisfies macOS.
+cat > "$APP_DIR/Contents/MacOS/launcher" << 'EOF'
+#!/bin/bash
+# miniMerch Studio launcher
+# Starts the server binary and keeps the process alive so macOS is happy.
+DIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$DIR/minimerch-studio"
+EOF
+chmod +x "$APP_DIR/Contents/MacOS/launcher"
+
 # Copy metadata
 cp "$SCRIPT_DIR/Info.plist" "$APP_DIR/Contents/Info.plist"
 cp "$SCRIPT_DIR/icon.icns"  "$APP_DIR/Contents/Resources/icon.icns"
