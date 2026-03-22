@@ -8,7 +8,8 @@
   },
   "scripts": {
     "studio": "node src/studio.js",
-    "build:mac": "bash build/build-mac.sh"
+    "build:mac": "bash build/build-mac.sh",
+    "build:win": "bash build/build-win.sh"
   },
   "pkg": {
     "scripts": [
@@ -52,6 +53,8 @@
     "commander": "^12.1.0"
   },
   "devDependencies": {
-    "@yao-pkg/pkg": "^6.14.1"
+    "@yao-pkg/pkg": "^6.14.1",
+    "png-to-ico": "^3.0.1",
+    "resedit": "^3.0.2"
   }
 }
