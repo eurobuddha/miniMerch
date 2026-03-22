@@ -579,7 +579,7 @@ async function completeVendorReply(response, statusEl, sendBtn) {
     await saveMessageToDb(sentMsg);
     
     if (statusEl) {
-        statusEl.textContent = 'Reply sent! TX: ' + txid.substring(0, 20) + '...';
+        statusEl.textContent = 'Reply sent! ✓';
         statusEl.className = 'reply-status success';
     }
     if (sendBtn) {
@@ -709,6 +709,39 @@ function setupMessageListeners() {
     });
 }
 
+// ── Copy-to-clipboard helpers ────────────────────────────────────────────────
+function wireCopyBtn(btnId, text) {
+    const btn = document.getElementById(btnId);
+    if (!btn || !text || text === '-') return;
+    btn.style.display = 'inline-flex';
+    btn.onclick = () => {
+        const doFlash = () => {
+            btn.textContent = '✓';
+            btn.classList.add('copied');
+            setTimeout(() => {
+                btn.textContent = '\u{1F4CB}';
+                btn.classList.remove('copied');
+            }, 2000);
+        };
+        navigator.clipboard.writeText(text).then(doFlash).catch(() => {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;opacity:0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            doFlash();
+        });
+    };
+}
+
+function setTxid(fullId) {
+    const el = document.getElementById('modal-txid');
+    if (el) el.textContent = fullId || '-';
+    wireCopyBtn('copy-txid-btn', fullId);
+}
+
 function showMessageDetail(msg) {
     if (!msg) return;
     
@@ -732,7 +765,7 @@ function showMessageDetail(msg) {
     if (msg.direction === 'sent') {
         document.getElementById('modal-title').textContent = '📤 Sent Reply: ' + (msg.originalRef || msg.ref);
         document.getElementById('modal-direction').textContent = '📤 Sent';
-        document.getElementById('modal-txid').textContent = msg.coinid ? msg.coinid.substring(0, 30) + '...' : '-';
+        setTxid(msg.coinid || '-');
         
         document.getElementById('modal-info').innerHTML = `
             <div class="info-row">
@@ -763,7 +796,7 @@ function showMessageDetail(msg) {
     if (isBuyerReply) {
         document.getElementById('modal-title').textContent = '↩️ Buyer Reply: ' + msg.ref;
         document.getElementById('modal-direction').textContent = !msg.read ? '📨 Unread' : '📧 Read';
-        document.getElementById('modal-txid').textContent = msg.coinid ? msg.coinid.substring(0, 30) + '...' : '-';
+        setTxid(msg.coinid || '-');
         
         document.getElementById('modal-info').innerHTML = `
             <div class="info-row">
@@ -814,7 +847,7 @@ function showMessageDetail(msg) {
     // Regular ORDER
     document.getElementById('modal-title').textContent = 'Order: ' + msg.ref;
     document.getElementById('modal-direction').textContent = !msg.read ? '📨 Unread' : '📧 Read';
-    document.getElementById('modal-txid').textContent = msg.coinid ? msg.coinid.substring(0, 30) + '...' : '-';
+    setTxid(msg.coinid || '-');
 
     // Try to parse cart items if this is a multi-product order
     let cartItemsHtml = '';

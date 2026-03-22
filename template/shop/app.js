@@ -1041,7 +1041,7 @@ function completePayment(payResponse, payBtn) {
         payBtn.querySelector('.btn-text').textContent = '✓ Sent!';
         payBtn.classList.add('sent');
     }
-    showPaymentStatus('Transaction sent! TX: ' + txid.substring(0, 20) + '...', 'success');
+    showPaymentStatus('Transaction sent! ✓', 'success');
     
     setTimeout(() => {
         closeModal();
@@ -1082,7 +1082,7 @@ async function completeReply(response, statusEl, sendBtn) {
     await addMessage(sentMessage);
     
     if (statusEl) {
-        statusEl.textContent = 'Reply sent! TX: ' + txid.substring(0, 20) + '...';
+        statusEl.textContent = 'Reply sent! ✓';
         statusEl.className = 'reply-status success';
     }
     if (sendBtn) {
@@ -1516,9 +1516,50 @@ function hidePaymentStatus() {
     statusEl.classList.add('hidden');
 }
 
+// ── Copy-to-clipboard helper ─────────────────────────────────────────────────
+function wireCopyBtn(btnId, text) {
+    const btn = document.getElementById(btnId);
+    if (!btn || !text || text === 'Pending...') return;
+    btn.style.display = 'inline-flex';
+    btn.onclick = () => {
+        navigator.clipboard.writeText(text).then(() => {
+            btn.textContent = '✓';
+            btn.classList.add('copied');
+            setTimeout(() => {
+                btn.textContent = '\u{1F4CB}';
+                btn.classList.remove('copied');
+            }, 2000);
+        }).catch(() => {
+            // Fallback for browsers without clipboard API
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            btn.textContent = '✓';
+            btn.classList.add('copied');
+            setTimeout(() => {
+                btn.textContent = '\u{1F4CB}';
+                btn.classList.remove('copied');
+            }, 2000);
+        });
+    };
+}
+
 function showConfirmation(txid, orderRef) {
-    document.getElementById('tx-id').textContent = txid || 'Pending...';
-    document.getElementById('order-ref').textContent = orderRef || lastOrderReference || 'N/A';
+    const fullTxid = txid || 'Pending...';
+    const fullRef  = orderRef || lastOrderReference || 'N/A';
+
+    document.getElementById('tx-id').textContent    = fullTxid;
+    document.getElementById('order-ref').textContent = fullRef;
+
+    // Wire copy buttons
+    wireCopyBtn('copy-txid-btn',    fullTxid);
+    wireCopyBtn('copy-orderref-btn', fullRef);
+
     document.getElementById('confirmation-modal').classList.remove('hidden');
 }
 
