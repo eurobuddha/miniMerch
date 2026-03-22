@@ -29,8 +29,8 @@ fi
 
 cd "$PROJECT_DIR"
 
-# ── 2. Clean ──────────────────────────────────────────────────────────────────
-rm -rf "$OUT_DIR"
+# ── 2. Clean previous Windows release files only (preserve Mac .dmg) ─────────
+rm -rf "$OUT_DIR/staging" "$OUT_DIR/miniMerch-Studio-"*"-Setup.exe"
 mkdir -p "$OUT_DIR" "$STAGING"
 echo "✓  Output directory: $OUT_DIR"
 

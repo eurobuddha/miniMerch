@@ -33,8 +33,8 @@ if ! npx --no-install @yao-pkg/pkg --version &> /dev/null 2>&1; then
     npm install --save-dev @yao-pkg/pkg
 fi
 
-# ── 2. Clean previous release ────────────────────────────────────────────────
-rm -rf "$OUT_DIR"
+# ── 2. Clean previous Mac release files only (preserve Windows .exe) ─────────
+rm -rf "$OUT_DIR/miniMerch Studio.app" "$OUT_DIR/miniMerch-Studio-"*".dmg"
 mkdir -p "$OUT_DIR"
 echo "✓  Output directory: $OUT_DIR"
 
