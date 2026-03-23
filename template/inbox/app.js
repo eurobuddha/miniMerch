@@ -190,7 +190,8 @@ async function loadMessagesFromDb() {
                     buyerAddress: row.BUYERADDRESS || row.buyerAddress,
                     originalRef: row.ORIGINALREF || row.originalRef,
                     originalOrder: row.ORIGINALORDER || row.originalOrder,
-                    originalProduct: row.ORIGINALPRODUCT || row.originalProduct
+                    originalProduct: row.ORIGINALPRODUCT || row.originalProduct,
+                    status: row.STATUS || row.status || 'PENDING'
                 };
             });
         }
