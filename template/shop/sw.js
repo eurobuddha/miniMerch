@@ -79,6 +79,7 @@ self.addEventListener('fetch', (event) => {
     if (event.request.url.includes('/api/')) return;
 
     const filename = event.request.url.split('/').pop().split('?')[0];
+    if (!filename) return; // directory-style URL — fall through to browser default
 
     // Network-only: config.js and products.js are regenerated on every build
     if (NETWORK_ONLY_FILES.includes(filename)) {

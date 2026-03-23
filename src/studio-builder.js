@@ -123,7 +123,7 @@ function generateShopDappConf(shopName, products) {
         desc = products[0] ? products[0].description || products[0].name : 'miniMerch shop';
     }
     return JSON.stringify({
-        name:        safeName(shopName) || 'miniMerch',
+        name:        (shopName || 'miniMerch').replace(/[^a-zA-Z0-9 \-]/g, '').replace(/\s+/g, ' ').trim() || 'miniMerch',
         version:     '1.1.0',
         headline:    headline,
         description: desc,
