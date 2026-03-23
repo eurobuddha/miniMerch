@@ -123,8 +123,8 @@ function generateShopDappConf(shopName, products) {
         desc = products[0] ? products[0].description || products[0].name : 'miniMerch shop';
     }
     return JSON.stringify({
-        name:        'miniMerch',
-        version:     '1.0.0',
+        name:        shopName || 'miniMerch',
+        version:     '1.1.0',
         headline:    headline,
         description: desc,
         icon:        './icon.svg',
@@ -135,7 +135,7 @@ function generateShopDappConf(shopName, products) {
 function generateInboxDappConf() {
     return JSON.stringify({
         name:        'miniMerchInbox',
-        version:     '1.0.0',
+        version:     '1.1.0',
         headline:    'miniMerch Order Inbox',
         description: 'Receive and manage orders from your miniMerch shops',
         icon:        './icon.svg',
@@ -206,8 +206,8 @@ async function build(products, imagePaths, slippage, shopName, distDir) {
     }
 
     const shopFileName = isMulti
-        ? `miniMerch_${safeName(shopName || 'Shop')}.mds.zip`
-        : `miniMerch_${safeName(products[0].name)}.mds.zip`;
+        ? `${safeName(shopName || 'miniMerch_Shop')}.mds.zip`
+        : `${safeName(products[0].name)}.mds.zip`;
     const shopZipPath  = path.join(distDir, shopFileName);
     const shopSize     = await zipDir(shopTmp, shopZipPath);
     fs.rmSync(shopTmp, { recursive: true, force: true });
