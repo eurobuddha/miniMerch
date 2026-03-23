@@ -14,9 +14,9 @@
     --text-light: #757575;
     --border: #E0E0E0;
     --border-dark: #BDBDBD;
-    --bg-white: #FFFFFF;
-    --bg-light: #FAFAFA;
-    --bg-gray: #F5F5F5;
+    --bg-white: #FFFEFB;
+    --bg-light: #F7F5F1;
+    --bg-gray: #F0EDE8;
     --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
     --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
     --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
@@ -32,7 +32,7 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
     min-height: 100vh;
     color: var(--text-dark);
     background: var(--bg-light);
@@ -80,8 +80,9 @@ body {
 }
 
 .logo h1 {
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
     font-size: 1.5rem;
-    font-weight: 700;
+    font-weight: 800;
     color: var(--primary);
     letter-spacing: -0.5px;
 }
@@ -200,6 +201,26 @@ body {
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    animation: fadeUp 0.4s ease both;
+}
+
+.product-card:nth-child(1) { animation-delay: 0.05s; }
+.product-card:nth-child(2) { animation-delay: 0.1s; }
+.product-card:nth-child(3) { animation-delay: 0.15s; }
+.product-card:nth-child(4) { animation-delay: 0.2s; }
+.product-card:nth-child(5) { animation-delay: 0.25s; }
+.product-card:nth-child(6) { animation-delay: 0.3s; }
+.product-card:nth-child(n+7) { animation-delay: 0.35s; }
+
+.product-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.13);
+}
+
+@keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 .product-card::before {
@@ -255,11 +276,12 @@ body {
 }
 
 .product-name {
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
     font-size: 1.5rem;
-    font-weight: 600;
+    font-weight: 800;
     color: var(--text-dark);
     margin-bottom: 0.5rem;
-    line-height: 1.3;
+    line-height: 1.25;
 }
 
 .product-description {
@@ -294,9 +316,10 @@ body {
 }
 
 .price-value {
-    font-size: 1.75rem;
+    font-size: 2rem;
     font-weight: 700;
-    color: var(--text-dark);
+    color: var(--accent);
+    letter-spacing: -0.5px;
 }
 
 .price-value.crypto {
@@ -457,28 +480,31 @@ body {
     width: calc(100% - 3rem);
     margin: 1.5rem;
     padding: 1rem 1.5rem;
-    background: var(--accent);
+    background: var(--primary);
     border: none;
     border-radius: var(--radius-md);
     color: white;
-    font-size: 1rem;
+    font-family: 'Manrope', sans-serif;
+    font-size: 0.95rem;
     font-weight: 600;
+    letter-spacing: 0.01em;
     cursor: pointer;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    transition: all 0.2s ease;
-    box-shadow: none;
+    transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
 
 .buy-button:hover {
-    background: var(--accent-hover);
+    background: var(--primary-light);
     transform: translateY(-1px);
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.18);
 }
 
 .buy-button:active {
     transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
 }
 
 /* Loading */
@@ -511,7 +537,9 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0,0,0,0.5);
+    background: rgba(20,16,10,0.45);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -928,30 +956,35 @@ body {
 /* Footer */
 .footer {
     text-align: center;
-    padding: 2rem;
+    padding: 2.5rem 2rem;
     color: var(--text-light);
-    font-size: 0.85rem;
+    font-size: 0.8rem;
+    letter-spacing: 0.02em;
     border-top: 1px solid var(--border);
     background: var(--bg-white);
+    line-height: 2;
 }
 
 .minima-text {
-    color: var(--text-dark);
+    color: var(--text-medium);
     font-weight: 600;
 }
 
 .bridge-link {
-    margin-top: 0.5rem;
+    margin-top: 0.25rem;
 }
 
 .bridge-link a {
-    color: var(--accent);
+    color: var(--text-light);
     text-decoration: none;
-    font-weight: 500;
+    border-bottom: 1px solid var(--border-dark);
+    padding-bottom: 1px;
+    transition: color 0.15s, border-color 0.15s;
 }
 
 .bridge-link a:hover {
-    text-decoration: underline;
+    color: var(--accent);
+    border-color: var(--accent);
 }
 
 /* Mobile Responsive */
@@ -1054,6 +1087,9 @@ body {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
+    }
+    .product-card {
+        transform: none !important;
     }
 }
 

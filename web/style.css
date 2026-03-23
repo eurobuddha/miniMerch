@@ -27,7 +27,7 @@ html, body { height: 100%; }
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 14px;
   line-height: 1.6;
   min-height: 100vh;
@@ -68,7 +68,7 @@ code {
   align-items: center;
   gap: 0.5rem;
   font-size: 1.1rem;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--text);
 }
 
@@ -140,7 +140,7 @@ code {
   flex-wrap: wrap;
 }
 
-h2 { font-size: 1.3rem; font-weight: 700; }
+h2 { font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em; }
 
 .section-subtitle {
   color: var(--text-muted);
@@ -161,11 +161,11 @@ h2 { font-size: 1.3rem; font-weight: 700; }
 .field-group--grow { flex: 1; min-width: 0; }
 
 label {
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: 0.7rem;
+  font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
 
 .required { color: var(--accent); }
@@ -190,6 +190,7 @@ select {
 input:focus, textarea:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255,215,0,0.08);
 }
 
 input::placeholder, textarea::placeholder { color: var(--text-light); }
@@ -209,8 +210,9 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
   border-radius: var(--radius);
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.88rem;
-  font-weight: 600;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
   padding: 0.55rem 1.1rem;
   text-decoration: none;
   transition: background 0.15s, opacity 0.15s, transform 0.1s;
@@ -226,7 +228,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
 .btn-secondary { background: var(--bg-hover); color: var(--text); border: 1px solid var(--border-light); }
 .btn-secondary:hover:not(:disabled) { background: var(--border); }
 
-.btn-lg { font-size: 1rem; padding: 0.75rem 2rem; }
+.btn-lg { font-size: 0.95rem; font-weight: 800; letter-spacing: 0.02em; padding: 0.8rem 2.25rem; }
 
 .btn-download { background: var(--teal); color: #000; }
 .btn-download:hover { background: #00eecc; }
@@ -285,11 +287,11 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
 .drag-handle:active { cursor: grabbing; }
 
 .card-number {
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  color: var(--text-muted);
+  color: var(--text-light);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
   flex: 1;
 }
 
@@ -439,7 +441,8 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
 }
 
 .count-label {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 500;
   color: var(--text-muted);
 }
 
@@ -477,6 +480,12 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
   border: 1px solid rgba(39,174,96,0.4);
   border-radius: var(--radius-lg);
   padding: 1.25rem 1.5rem;
+  animation: fadeUp 0.3s ease;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .result-header {
@@ -487,7 +496,7 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
 }
 
 .result-icon { font-size: 1.4rem; }
-.result-header h3 { font-size: 1.05rem; font-weight: 700; color: var(--success); }
+.result-header h3 { font-size: 1rem; font-weight: 800; letter-spacing: -0.01em; color: var(--success); }
 
 .result-files { display: flex; flex-direction: column; gap: 0.75rem; }
 
