@@ -430,21 +430,43 @@ async function processReplyMessage(coin) {
         return;
     }
     
-    if (decrypted.type !== 'REPLY') {
-        console.log('Not a reply message, ignoring');
+    if (decrypted.type !== 'REPLY' && decrypted.type !== 'STATUS_UPDATE') {
+        console.log('Not a reply or status update, ignoring');
         return;
     }
-    
+
     // Check for duplicate
     const randomid = decrypted.randomid || (decrypted.ref + '_' + decrypted.timestamp);
     const stored = await isMessageStored(randomid);
     if (stored) {
-        console.log('Reply already stored, skipping:', randomid);
+        console.log('Message already stored, skipping:', randomid);
         return;
     }
-    
-    console.log('Decrypted reply:', JSON.stringify(decrypted));
-    
+
+    console.log('Decrypted message:', JSON.stringify(decrypted));
+
+    if (decrypted.type === 'STATUS_UPDATE') {
+        const statusLabel = decrypted.status
+            ? decrypted.status.charAt(0) + decrypted.status.slice(1).toLowerCase()
+            : 'Updated';
+        const message = {
+            id: Date.now().toString(),
+            randomid: randomid,
+            ref: decrypted.ref || 'STATUS-' + Date.now(),
+            type: 'STATUS_UPDATE',
+            subject: 'Order status: ' + statusLabel,
+            message: 'Your order status has been updated to ' + statusLabel,
+            timestamp: decrypted.timestamp || Date.now(),
+            coinid: coinid,
+            read: false,
+            direction: 'received',
+            vendorPublicKey: decrypted.vendorPublicKey || decrypted._senderPublicKey || null,
+            product: decrypted.status || ''
+        };
+        await addMessage(message);
+        return;
+    }
+
     const message = {
         id: Date.now().toString(),
         randomid: randomid,
@@ -460,7 +482,7 @@ async function processReplyMessage(coin) {
         vendorPublicKey: decrypted.vendorPublicKey || decrypted._senderPublicKey || null,
         vendorAddress: decrypted.vendorAddress || null
     };
-    
+
     await addMessage(message);
 }
 
@@ -1805,16 +1827,20 @@ function renderMessageList(messages, type) {
     return messages.map(msg => {
         const isReply = msg.type === 'REPLY';
         const isBuyerReply = msg.type === 'BUYER_REPLY';
+        const isStatusUpdate = msg.type === 'STATUS_UPDATE';
+        const statusIcons = { PENDING: '⏳', PAID: '💳', CONFIRMED: '✅', SHIPPED: '🚚', DELIVERED: '📦' };
+        const statusIcon = isStatusUpdate ? (statusIcons[msg.product] || '📋') : null;
         return `
         <div class="message-item ${msg.direction === 'received' && !msg.read ? 'unread' : ''} ${isBuyerReply ? 'buyer-reply' : ''}" data-id="${msg.id}">
-            <div class="message-icon">${isBuyerReply ? '↩️' : (isReply ? '↩️' : (msg.direction === 'received' ? '📨' : '📤'))}</div>
+            <div class="message-icon">${isStatusUpdate ? statusIcon : (isBuyerReply ? '↩️' : (isReply ? '↩️' : (msg.direction === 'received' ? '📨' : '📤')))}</div>
             <div class="message-preview">
                 <div class="message-subject">${escapeHtml(msg.subject || msg.product) || 'Order: ' + escapeHtml(msg.ref)}</div>
                 <div class="message-meta">
                     <span class="message-ref">${escapeHtml(msg.ref)}</span>
-                    ${isBuyerReply ? '<span class="message-type">Your Reply</span>' :
+                    ${isStatusUpdate ? '<span class="message-type">Status Update</span>' :
+                      (isBuyerReply ? '<span class="message-type">Your Reply</span>' :
                       (isReply ? '<span class="message-type">Vendor Reply</span>' :
-                      `<span class="message-amount">$${escapeHtml(msg.amount)} ${escapeHtml(msg.currency)}</span>`)}
+                      `<span class="message-amount">$${escapeHtml(msg.amount)} ${escapeHtml(msg.currency)}</span>`))}
                 </div>
             </div>
             <div class="message-time">${formatTime(msg.timestamp)}</div>
@@ -1826,9 +1852,49 @@ function renderMessageDetail(msg) {
     const isReceived = msg.direction === 'received';
     const isReply = msg.type === 'REPLY';
     const isBuyerReply = msg.type === 'BUYER_REPLY';
+    const isStatusUpdate = msg.type === 'STATUS_UPDATE';
     const canReply = isReply && msg.vendorPublicKey;
     const showMarkAsRead = isReceived && !msg.read;
-    
+
+    // Status update notification (received)
+    if (isStatusUpdate) {
+        const statusIcons = { PENDING: '⏳', PAID: '💳', CONFIRMED: '✅', SHIPPED: '🚚', DELIVERED: '📦' };
+        const statusIcon = statusIcons[msg.product] || '📋';
+        const statusLabel = msg.product
+            ? msg.product.charAt(0) + msg.product.slice(1).toLowerCase()
+            : 'Updated';
+        return `
+            <button class="back-btn" id="back-to-list">← Back</button>
+            <div class="message-header">
+                <h3>${statusIcon} Order Status Update</h3>
+                <span class="message-direction">${!msg.read ? '📨 Unread' : '📧 Read'}</span>
+            </div>
+
+            <div class="message-info">
+                <div class="info-row">
+                    <span class="info-label">Order Ref:</span>
+                    <span class="info-value">${escapeHtml(msg.ref)}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">New Status:</span>
+                    <span class="info-value">${statusIcon} ${escapeHtml(statusLabel)}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Time:</span>
+                    <span class="info-value">${new Date(msg.timestamp).toLocaleString()}</span>
+                </div>
+            </div>
+
+            <div class="reply-content">
+                <p class="reply-message">${escapeHtml(msg.message)}</p>
+            </div>
+
+            <div class="message-actions">
+                ${showMarkAsRead ? `<button class="mark-read-btn" id="mark-read-btn" data-id="${msg.id}">✓ Mark as Read</button>` : ''}
+            </div>
+        `;
+    }
+
     // Vendor Reply (received)
     if (isReply && isReceived) {
         return `
