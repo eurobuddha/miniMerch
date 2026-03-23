@@ -12,7 +12,8 @@
  * @property {number} ttl - Time to live in milliseconds
  */
 
-const DEFAULT_MINIMA_PRICE = 0.0052; // updated Mar 2026
+// DEFAULT_MINIMA_PRICE is declared in app.js
+// const DEFAULT_MINIMA_PRICE = 0.0052; // updated Mar 2026
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /** @type {PriceCache|null} */

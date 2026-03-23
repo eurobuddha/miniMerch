@@ -22,8 +22,10 @@ let dbReady = false;
 let selectedSize = 'eighth';
 let selectedQuantity = 1;
 let selectedPaymentMethod = 'USDT';
-let selectedShipping = 'uk';
-let shippingFee = 5;
+// selectedShipping is declared in cart.js
+// let selectedShipping = 'uk';
+// shippingFee is declared in cart.js
+// let shippingFee = 5;
 let mxToUsdRate = 0;
 let vendorAddress = null;
 let vendorPublicKey = null;
@@ -39,7 +41,8 @@ let pendingReplyUid = null; // UID of pending reply command
 
 // ── Cart state ──────────────────────────────────────────────────────────────
 // Each item: { productName, productIndex, sizeId, sizeLabel, quantity, unitPrice, lineTotal, mode, image }
-let cart = [];
+// cart is declared in cart.js
+// let cart = [];
 
 function escapeSQL(val) {
     if (val == null) return 'NULL';
@@ -1205,7 +1208,8 @@ async function fetchMXPrice() {
 // ============ UI FUNCTIONS ============
 
 // Per-card state: selectedSize and selectedQuantity keyed by product index
-const cardState = {};
+// cardState is declared in ui.js
+// const cardState = {};
 
 function getCardState(idx) {
     if (!cardState[idx]) {
@@ -1381,7 +1385,8 @@ function setupCardListeners(i) {
 }
 
 // ── setupModalListeners: one-time wiring for checkout + confirmation modals ──
-let _modalListenersReady = false;
+// _modalListenersReady is declared in ui.js
+// let _modalListenersReady = false;
 function setupModalListeners() {
     if (_modalListenersReady) return;
     _modalListenersReady = true;
@@ -1546,8 +1551,10 @@ function hidePaymentStatus() {
 }
 
 // ── Copy-to-clipboard helper ─────────────────────────────────────────────────
-const COPY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
-const CHECK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+// COPY_ICON is declared in ui.js
+// const COPY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+// CHECK_ICON is declared in ui.js
+// const CHECK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
 function truncateTxid(id) {
     // No truncation — return full value; CSS word-break handles wrapping
@@ -1634,8 +1641,10 @@ function validateVendorAddress() {
 
 // ============ INBOX VIEW ============
 
-let currentView = 'shop';
-let selectedMessage = null;
+// currentView is declared in ui.js
+// let currentView = 'shop';
+// selectedMessage is declared in ui.js
+// let selectedMessage = null;
 
 function renderCardHTML(i) {
     return `
@@ -2102,12 +2111,16 @@ function setupNavigation() {
 
 // ============ CAROUSEL / RESPONSIVE GRID ============
 
-let currentProductIndex = 0;
-let _carouselMode = false;        // true = narrow (1 card visible), false = grid
-let _carouselListenersAdded = false;
+// currentProductIndex is declared in ui.js
+// let currentProductIndex = 0;
+// _carouselMode is declared in ui.js
+// let _carouselMode = false;        // true = narrow (1 card visible), false = grid
+// _carouselListenersAdded is declared in ui.js
+// let _carouselListenersAdded = false;
 
 // matchMedia query — carousel mode below this width
-const CAROUSEL_MQ = window.matchMedia('(max-width: 599px)');
+// CAROUSEL_MQ is declared in ui.js
+// const CAROUSEL_MQ = window.matchMedia('(max-width: 599px)');
 
 function isCarouselMode() {
     return CAROUSEL_MQ.matches;

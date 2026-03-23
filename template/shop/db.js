@@ -36,8 +36,9 @@
  * @property {string} status - Order status (PENDING, PAID, CONFIRMED, SHIPPED, DELIVERED)
  */
 
-/** @type {boolean} */
-let dbReady = false;
+// dbReady is declared in app.js
+// /** @type {boolean} */
+// let dbReady = false;
 
 /**
  * Escape a value for SQL insertion

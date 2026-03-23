@@ -1,8 +1,11 @@
 // ChainMail-style protocol: Fixed address for ALL messages, encryption-based privacy
-const MINIMERCH_ADDRESS = '0x4D494E494D45524348'; // hex for "MINIMERCH"
-const TOKEN_ID_MINIMA = '0x00';
+// MINIMERCH_ADDRESS is declared in app.js
+// const MINIMERCH_ADDRESS = '0x4D494E494D45524348'; // hex for "MINIMERCH"
+// TOKEN_ID_MINIMA is declared in app.js as TOKEN_IDS.MINIMA
+// const TOKEN_ID_MINIMA = '0x00';
 
-let dbReady = false;
+// dbReady is declared in app.js
+// let dbReady = false;
 
 function escapeSQL(val) {
     if (val == null) return 'NULL';

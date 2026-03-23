@@ -32,12 +32,14 @@
  */
 
 // ChainMail-style protocol: Fixed address for ALL messages, encryption-based privacy
-const MINIMERCH_ADDRESS = '0x4D494E494D45524348'; // hex for "MINIMERCH"
+// MINIMERCH_ADDRESS is declared in app.js which loads before this file
+// const MINIMERCH_ADDRESS = '0x4D494E494D45524348'; // hex for "MINIMERCH"
 
-const TOKEN_IDS = {
-    USDT: '0x7D39745FBD29049BE29850B55A18BF550E4D442F930F86266E34193D89042A90',
-    MINIMA: '0x00'
-};
+// TOKEN_IDS is declared in app.js which loads before this file
+// const TOKEN_IDS = {
+//     USDT: '0x7D39745FBD29049BE29850B55A18BF550E4D442F930F86266E34193D89042A90',
+//     MINIMA: '0x00'
+// };
 
 /**
  * Convert text to hex

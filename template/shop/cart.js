@@ -27,11 +27,12 @@ let selectedShipping = 'uk';
 /** @type {number} */
 let shippingFee = 5;
 
-const SHIPPING_RATES = {
-    uk: 5,
-    intl: 20,
-    digital: 0
-};
+// SHIPPING_RATES is declared in app.js
+// const SHIPPING_RATES = {
+//     uk: 5,
+//     intl: 20,
+//     digital: 0
+// };
 
 /**
  * Get the current cart
