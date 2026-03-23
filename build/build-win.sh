@@ -8,7 +8,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-VERSION="0.2.0"
+VERSION="0.4.7"
 NODE_VERSION="22.14.0"    # LTS
 NODE_ZIP="node-v${NODE_VERSION}-win-x64.zip"
 NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ZIP}"
@@ -98,7 +98,7 @@ cp -r "$PROJECT_DIR/node_modules/normalize-path"    "$STAGING/node_modules/" 2>/
 
 # Write a minimal package.json so Node can resolve modules
 cat > "$STAGING/package.json" << 'PKGJSON'
-{ "name": "minimerch-studio", "version": "0.2.0", "main": "src/studio.js" }
+{ "name": "minimerch-studio", "version": "0.4.7", "main": "src/studio.js" }
 PKGJSON
 
 echo "✓  App files staged"

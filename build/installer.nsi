@@ -7,7 +7,7 @@
 Unicode True
 
 !define APP_NAME       "miniMerch Studio"
-!define APP_VERSION    "0.2.0"
+!define APP_VERSION    "0.4.7"
 !define APP_PUBLISHER  "miniMerch"
 !define APP_URL        "https://github.com/eurobuddha/miniMerch"
 !define INSTALL_DIR    "$LOCALAPPDATA\${APP_NAME}"
@@ -24,7 +24,7 @@ ShowInstDetails        show
 Icon          "..\release\staging\icon.ico"
 UninstallIcon "..\release\staging\icon.ico"
 
-VIProductVersion       "0.2.0.0"
+VIProductVersion       "0.4.7.0"
 VIAddVersionKey "ProductName"      "${APP_NAME}"
 VIAddVersionKey "ProductVersion"   "${APP_VERSION}"
 VIAddVersionKey "CompanyName"      "${APP_PUBLISHER}"
