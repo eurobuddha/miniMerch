@@ -86,7 +86,7 @@ function saveMessageToDb(message) {
     MDS.sql(
         'INSERT OR IGNORE INTO messages ' +
         '(randomid, ref, type, product, size, amount, currency, delivery, shipping, message, ' +
-        'timestamp, coinid, read, direction, buyerPublicKey, buyerAddress, vendorPublicKey, vendorAddress) ' +
+        'timestamp, coinid, read, direction, buyerPublicKey, buyerAddress, vendorPublicKey, vendorAddress, subject) ' +
         'VALUES (' +
         escapeSQL(message.randomid || generateRandomId()) + ', ' +
         escapeSQL(message.ref || '') + ', ' + escapeSQL(message.type || 'ORDER') + ', ' +
@@ -97,7 +97,8 @@ function saveMessageToDb(message) {
         escapeSQL(message.coinid || '') + ', ' + (message.read ? 1 : 0) + ', ' +
         escapeSQL(message.direction || 'sent') + ', ' +
         escapeSQL(message.buyerPublicKey || '') + ', ' + escapeSQL(message.buyerAddress || '') + ', ' +
-        escapeSQL(message.vendorPublicKey || '') + ', ' + escapeSQL(message.vendorAddress || '') + ')',
+        escapeSQL(message.vendorPublicKey || '') + ', ' + escapeSQL(message.vendorAddress || '') + ', ' +
+        escapeSQL(message.subject || '') + ')',
         function(response) {
             if (response && response.status) {
                 console.log('SVC shop: saved msg to DB:', message.ref || message.randomid);

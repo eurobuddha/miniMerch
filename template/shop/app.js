@@ -1815,6 +1815,8 @@ function renderInbox() {
     setupInboxEventListeners();
 }
 
+const STATUS_ICONS = { PENDING: '⏳', PAID: '💳', CONFIRMED: '✅', SHIPPED: '🚚', DELIVERED: '📦' };
+
 function renderMessageList(messages, type) {
     if (messages.length === 0) {
         return `
@@ -1828,8 +1830,7 @@ function renderMessageList(messages, type) {
         const isReply = msg.type === 'REPLY';
         const isBuyerReply = msg.type === 'BUYER_REPLY';
         const isStatusUpdate = msg.type === 'STATUS_UPDATE';
-        const statusIcons = { PENDING: '⏳', PAID: '💳', CONFIRMED: '✅', SHIPPED: '🚚', DELIVERED: '📦' };
-        const statusIcon = isStatusUpdate ? (statusIcons[msg.product] || '📋') : null;
+        const statusIcon = isStatusUpdate ? (STATUS_ICONS[msg.product] || '📋') : null;
         return `
         <div class="message-item ${msg.direction === 'received' && !msg.read ? 'unread' : ''} ${isBuyerReply ? 'buyer-reply' : ''}" data-id="${msg.id}">
             <div class="message-icon">${isStatusUpdate ? statusIcon : (isBuyerReply ? '↩️' : (isReply ? '↩️' : (msg.direction === 'received' ? '📨' : '📤')))}</div>
@@ -1858,8 +1859,7 @@ function renderMessageDetail(msg) {
 
     // Status update notification (received)
     if (isStatusUpdate) {
-        const statusIcons = { PENDING: '⏳', PAID: '💳', CONFIRMED: '✅', SHIPPED: '🚚', DELIVERED: '📦' };
-        const statusIcon = statusIcons[msg.product] || '📋';
+        const statusIcon = STATUS_ICONS[msg.product] || '📋';
         const statusLabel = msg.product
             ? msg.product.charAt(0) + msg.product.slice(1).toLowerCase()
             : 'Updated';

@@ -1316,6 +1316,11 @@ async function sendStatusUpdateToBuyer(msg, newStatus, updateBtn) {
         return;
     }
 
+    if (pendingStatusUpdateUid) {
+        console.warn('sendStatusUpdateToBuyer: previous send still pending, skipping');
+        return;
+    }
+
     try {
         if (!myPublicKey) {
             myPublicKey = await getMyPublicKey();
