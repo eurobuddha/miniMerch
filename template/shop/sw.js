@@ -103,9 +103,9 @@ self.addEventListener('fetch', (event) => {
                             return networkResponse;
                         }
                         const responseToCache = networkResponse.clone();
-                        caches.open(CACHE_NAME).then((cache) => {
-                            cache.put(event.request, responseToCache);
-                        });
+                        caches.open(CACHE_NAME)
+                            .then((cache) => cache.put(event.request, responseToCache))
+                            .catch((err) => console.warn('SW: cache.put failed', err));
                         return networkResponse;
                     })
                     .catch(() => {

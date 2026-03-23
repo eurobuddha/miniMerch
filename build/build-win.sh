@@ -95,8 +95,8 @@ cp -r "$PROJECT_DIR/node_modules/lodash"            "$STAGING/node_modules/" 2>/
 cp -r "$PROJECT_DIR/node_modules/normalize-path"    "$STAGING/node_modules/" 2>/dev/null || true
 
 # Write a minimal package.json so Node can resolve modules
-cat > "$STAGING/package.json" << 'PKGJSON'
-{ "name": "minimerch-studio", "version": "0.4.8", "main": "src/studio.js" }
+cat > "$STAGING/package.json" << PKGJSON
+{ "name": "minimerch-studio", "version": "${VERSION}", "main": "src/studio.js" }
 PKGJSON
 
 echo "✓  App files staged"
