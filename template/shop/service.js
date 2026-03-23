@@ -175,6 +175,27 @@ function processDecryptedMessage(coinid, decrypted, direction) {
                 vendorAddress: decrypted.vendorAddress || null
             };
             saveMessageToDb(message);
+        } else if (decrypted.type === 'STATUS_UPDATE') {
+            // Vendor status update notification to buyer
+            let statusLabel = decrypted.status
+                ? decrypted.status.charAt(0) + decrypted.status.slice(1).toLowerCase()
+                : 'Updated';
+            let message = {
+                id: 'svc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                randomid: randomid,
+                ref: decrypted.ref || 'STATUS-' + Date.now(),
+                type: 'STATUS_UPDATE',
+                subject: 'Order status: ' + statusLabel,
+                product: decrypted.status || '',
+                message: 'Your order status has been updated to ' + statusLabel,
+                timestamp: decrypted.timestamp || Date.now(),
+                coinid: coinid,
+                read: false,
+                direction: 'received',
+                vendorPublicKey: decrypted.vendorPublicKey || decrypted._senderPublicKey || null,
+                vendorAddress: null
+            };
+            saveMessageToDb(message);
         }
         // Note: We don't store our own sent orders here - that's handled by app.js
     });

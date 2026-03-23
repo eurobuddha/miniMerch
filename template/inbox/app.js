@@ -19,6 +19,8 @@ let pollingInterval = null;
 let dbReady = false;
 let pendingReplyData = null; // Track pending reply for when confirmed
 let pendingReplyUid = null; // UID of pending reply command
+let pendingStatusUpdateData = null; // Track pending status update notification
+let pendingStatusUpdateUid = null; // UID of pending status update command
 
 function escapeSQL(val) {
     if (val == null) return 'NULL';
@@ -1106,6 +1108,23 @@ MDS.init(async (msg) => {
             }
             return;
         }
+
+        // Match our pending STATUS_UPDATE notification by UID
+        if (pendingStatusUpdateUid && msg.data && msg.data.uid === pendingStatusUpdateUid) {
+            pendingStatusUpdateUid = null;
+            const btn = document.getElementById('update-status-btn');
+            if (msg.data.accept && msg.data.result && msg.data.result.status) {
+                console.log('Status update notification accepted for ref:', pendingStatusUpdateData?.ref);
+                if (btn) btn.textContent = '✓ Updated · Buyer notified';
+                setTimeout(() => { if (btn) btn.textContent = 'Update Status'; }, 3000);
+            } else {
+                console.log('Status update notification denied/failed');
+                if (btn) btn.textContent = '✓ Updated';
+                setTimeout(() => { if (btn) btn.textContent = 'Update Status'; }, 2000);
+            }
+            pendingStatusUpdateData = null;
+            return;
+        }
     }
 });
 
@@ -1290,6 +1309,66 @@ function setupExportListeners() {
     }
 }
 
+// ── Silent status update notification to buyer ─────────────────────────────
+async function sendStatusUpdateToBuyer(msg, newStatus, updateBtn) {
+    if (!msg.buyerPublicKey) {
+        console.log('sendStatusUpdateToBuyer: no buyerPublicKey, skipping');
+        return;
+    }
+
+    try {
+        if (!myPublicKey) {
+            myPublicKey = await getMyPublicKey();
+        }
+
+        const payload = {
+            type: 'STATUS_UPDATE',
+            randomid: generateRandomId(),
+            ref: msg.ref,
+            status: newStatus,
+            timestamp: Date.now(),
+            vendorPublicKey: myPublicKey || ''
+        };
+
+        const encryptResult = await encryptMessage(msg.buyerPublicKey, payload);
+        if (!encryptResult || !encryptResult.encrypted) {
+            console.warn('sendStatusUpdateToBuyer: encryption failed');
+            return;
+        }
+
+        const state = {};
+        state[99] = encryptResult.encrypted;
+        const command = 'send address:' + MINIMERCH_ADDRESS + ' amount:0.0001 tokenid:' + TOKEN_IDS.MINIMA + ' state:' + JSON.stringify(state);
+
+        pendingStatusUpdateData = { ref: msg.ref, status: newStatus };
+
+        MDS.cmd(command, (response) => {
+            console.log('Status update TX response:', JSON.stringify(response));
+
+            if (response && response.pending) {
+                pendingStatusUpdateUid = response.pendinguid;
+                if (updateBtn) updateBtn.textContent = '✓ Updated · Pending approval';
+                setTimeout(() => { if (updateBtn) updateBtn.textContent = 'Update Status'; }, 4000);
+                return;
+            }
+
+            pendingStatusUpdateData = null;
+
+            if (response && response.status) {
+                console.log('Status update notification sent to buyer for ref:', msg.ref);
+                if (updateBtn) updateBtn.textContent = '✓ Updated · Buyer notified';
+                setTimeout(() => { if (updateBtn) updateBtn.textContent = 'Update Status'; }, 3000);
+            } else {
+                console.warn('sendStatusUpdateToBuyer: send failed', response?.error);
+                if (updateBtn) updateBtn.textContent = '✓ Updated';
+                setTimeout(() => { if (updateBtn) updateBtn.textContent = 'Update Status'; }, 2000);
+            }
+        });
+    } catch (err) {
+        console.error('sendStatusUpdateToBuyer error:', err);
+    }
+}
+
 // Update status button
 function setupStatusUpdateListener() {
     const updateStatusBtn = document.getElementById('update-status-btn');
@@ -1304,11 +1383,8 @@ function setupStatusUpdateListener() {
 
             if (success) {
                 selectedMessage.status = newStatus;
-                updateStatusBtn.textContent = '✓ Updated';
-                setTimeout(() => {
-                    updateStatusBtn.textContent = 'Update Status';
-                }, 2000);
                 renderInbox();
+                sendStatusUpdateToBuyer(selectedMessage, newStatus, updateStatusBtn);
             }
         });
     }
