@@ -8,7 +8,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-VERSION="0.4.8"
+VERSION="0.5.0"
 NODE_VERSION="22.14.0"    # LTS
 NODE_ZIP="node-v${NODE_VERSION}-win-x64.zip"
 NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ZIP}"
