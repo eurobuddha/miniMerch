@@ -1078,6 +1078,7 @@ function completePayment(payResponse, payBtn) {
     document.querySelectorAll('.shipping-btn').forEach(b => {
         b.classList.toggle('active', b.dataset.shipping === 'uk');
     });
+    updateAddressField();
     updateCartBadge();
 
     setTimeout(() => {

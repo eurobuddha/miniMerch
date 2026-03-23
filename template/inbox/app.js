@@ -688,7 +688,7 @@ function renderInbox() {
         <div class="message-item ${!msg.read && !isSent ? 'unread' : ''} ${isBuyerReply ? 'buyer-reply' : ''} ${isSent ? 'sent-message' : ''}" data-id="${msg.id}">
             <div class="message-icon">${isSent ? '📤' : (isBuyerReply ? '↩️' : (msg.read ? '📧' : '📨'))}</div>
             <div class="message-preview">
-                <div class="message-ref">${isSent ? '↩️ ' : ''}${isSent ? msg.originalRef || msg.ref : (isBuyerReply ? '↩️ ' : '') + msg.ref}</div>
+                <div class="message-ref">${isSent ? '↩️ ' : ''}${isSent ? escapeHtml(msg.originalRef || msg.ref) : (isBuyerReply ? '↩️ ' : '') + escapeHtml(msg.ref)}</div>
                 <div class="message-product">${isSent ? (escapeHtml(msg.originalProduct || msg.originalOrder) || 'Reply') : (isBuyerReply ? 'Buyer Reply' : escapeHtml(msg.product))}</div>
                 <div class="message-meta">
                     ${isSent ? '<span class="message-type sent-type">📤 Sent Reply</span>' : (isBuyerReply ? '<span class="message-type">Buyer Reply</span>' : `
@@ -799,7 +799,7 @@ function showMessageDetail(msg) {
         document.getElementById('modal-info').innerHTML = `
             <div class="info-row">
                 <span class="info-label">Order Ref:</span>
-                <span class="info-value">${msg.originalRef || msg.ref}</span>
+                <span class="info-value">${escapeHtml(msg.originalRef || msg.ref)}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Original Order:</span>
@@ -830,11 +830,11 @@ function showMessageDetail(msg) {
         document.getElementById('modal-info').innerHTML = `
             <div class="info-row">
                 <span class="info-label">Order Ref:</span>
-                <span class="info-value">${msg.ref}</span>
+                <span class="info-value">${escapeHtml(msg.ref)}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Original Order:</span>
-                <span class="info-value">${msg.product || 'N/A'}</span>
+                <span class="info-value">${escapeHtml(msg.product) || 'N/A'}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Time:</span>
