@@ -2,47 +2,69 @@ const path = require('path');
 const fs = require('fs');
 const { build } = require('./src/studio-builder');
 
-// Base products for Claude Bibeau Artwork (repeated 5x for 40 total)
+// Base products for Claude Bibeau Art Gallery (40 artworks)
 const baseProducts = [
-    { name: 'Cloud',   description: 'Oil on canvas', mode: 'units', pricePerUnit: 1, maxUnits: 1, weight: 1 },
-    { name: 'Ocean',   description: 'Oil on canvas', mode: 'units', pricePerUnit: 1, maxUnits: 1, weight: 1 },
-    { name: 'Shrub',   description: 'Oil on canvas', mode: 'units', pricePerUnit: 1, maxUnits: 1, weight: 1 },
-    { name: 'Corner',  description: 'Oil on canvas', mode: 'units', pricePerUnit: 1, maxUnits: 1, weight: 1 },
-    { name: 'Bird',    description: 'Oil on canvas', mode: 'units', pricePerUnit: 1, maxUnits: 1, weight: 1 },
-    { name: 'Wall',    description: 'Oil on canvas', mode: 'units', pricePerUnit: 1, maxUnits: 1, weight: 1 },
-    { name: 'Shadow',  description: 'Oil on canvas', mode: 'units', pricePerUnit: 1, maxUnits: 1, weight: 1 },
-    { name: 'Beach',   description: 'Oil on canvas', mode: 'units', pricePerUnit: 1, maxUnits: 1, weight: 1 }
+    { name: 'Claude Bibeau art 1',  description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 2',  description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 3',  description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 4',  description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 5',  description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 6',  description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 7',  description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 8',  description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 9',  description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 10', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 11', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 12', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 13', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 14', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 15', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 16', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 17', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 18', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 19', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 20', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 21', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 22', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 23', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 24', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 25', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 26', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 27', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 28', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 29', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 30', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 31', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 32', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 33', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 34', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 35', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 36', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 37', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 38', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 39', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 },
+    { name: 'Claude Bibeau art 40', description: 'Oil on canvas', mode: 'units', pricePerUnit: 0.01, maxUnits: 1, weight: 1 }
 ];
 
-// Base 8 image paths (from images folder)
+// Base 8 image paths (from images folder, repeated 5 times)
 const baseImagePaths = [
-    path.join(__dirname, 'images', 'app_022.jpg'),
-    path.join(__dirname, 'images', 'app_023.jpg'),
-    path.join(__dirname, 'images', 'app_027.jpg'),
-    path.join(__dirname, 'images', 'app_028.jpg'),
-    path.join(__dirname, 'images', 'app_031.jpg'),
-    path.join(__dirname, 'images', 'app_032.jpg'),
-    path.join(__dirname, 'images', 'app_075.jpg'),
-    path.join(__dirname, 'images', 'app_078.jpg')
+    'app_022.jpg',
+    'app_023.jpg',
+    'app_027.jpg',
+    'app_028.jpg',
+    'app_031.jpg',
+    'app_032.jpg',
+    'app_075.jpg',
+    'app_078.jpg'
 ];
 
-// Repeat 5 times for 40 products total
-// Each repeat appends a series number to the product name (Series I–V)
-const REPEATS = 5;
-const seriesNames = ['I', 'II', 'III', 'IV', 'V'];
-
-const products = [];
+// Repeat images 5 times for 40 products total
 const imagePaths = [];
-
-for (let r = 0; r < REPEATS; r++) {
-    for (let i = 0; i < baseProducts.length; i++) {
-        products.push({
-            ...baseProducts[i],
-            name: `${baseProducts[i].name} (Series ${seriesNames[r]})`,
-        });
-        imagePaths.push(baseImagePaths[i]);
-    }
+for (let i = 0; i < 40; i++) {
+    imagePaths.push(path.join(__dirname, 'images', baseImagePaths[i % 8]));
 }
+
+// Products are already defined above (40 unique artworks)
 
 // Ensure dist directory exists
 const distDir = path.join(__dirname, 'dist');
@@ -50,14 +72,14 @@ if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true });
 
 // Build the MiniDapps
 async function buildShop() {
-    console.log(`\n🎨 Building Claude Bibeau Artwork MiniDapps (${products.length} products)...\n`);
+    console.log(`\n🎨 Building Claude Bibeau Art Gallery (${baseProducts.length} artworks)...\n`);
 
     try {
         const result = await build(
-            products,
+            baseProducts,
             imagePaths,
             10,                                     // slippage
-            'Claude Bibeau Artworks',               // shop name
+            'Claude Bibeau Art Gallery',            // shop name
             distDir
         );
 
@@ -66,14 +88,11 @@ async function buildShop() {
         console.log(`Shop:  ${result.shopFile}  (${(result.shopSize / 1024).toFixed(1)} KB)`);
         console.log(`Inbox: ${result.inboxFile} (${(result.inboxSize / 1024).toFixed(1)} KB)`);
         console.log('─────────────────────────────────────────');
-        console.log(`\n${products.length} Original Oil Paintings (8 × ${REPEATS} series):`);
-        for (let r = 0; r < REPEATS; r++) {
-            console.log(`\n  Series ${seriesNames[r]}:`);
-            for (let i = 0; i < baseProducts.length; i++) {
-                const idx = r * baseProducts.length + i;
-                console.log(`    ${idx + 1}. ${products[idx].name}`);
-            }
-        }
+        console.log(`\n${baseProducts.length} Original Oil Paintings ($0.01 each):`);
+        baseProducts.slice(0, 8).forEach((p, i) => {
+            console.log(`  ${i + 1}. ${p.name}`);
+        });
+        console.log('  ... (and 32 more)');
         console.log('\nLocation: dist/');
 
     } catch (err) {
