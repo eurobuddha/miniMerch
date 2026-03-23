@@ -123,7 +123,7 @@ function generateShopDappConf(shopName, products) {
         desc = products[0] ? products[0].description || products[0].name : 'miniMerch shop';
     }
     return JSON.stringify({
-        name:        shopName || 'miniMerch',
+        name:        safeName(shopName) || 'miniMerch',
         version:     '1.1.0',
         headline:    headline,
         description: desc,
@@ -222,7 +222,7 @@ async function build(products, imagePaths, slippage, shopName, distDir) {
         if (file === 'dapp.conf') {
             fs.writeFileSync(dest, generateInboxDappConf());
         } else if (file === 'config.js') {
-            fs.writeFileSync(dest, `const INBOX_CONFIG = { obfuscatedVendorAddress: "${cfg.obfuscated}", appName: "miniMerchInbox", version: "1.0.0" };`);
+            fs.writeFileSync(dest, `const INBOX_CONFIG = { obfuscatedVendorAddress: "${cfg.obfuscated}", appName: "miniMerchInbox", version: "1.1.0" };`);
         } else {
             copyFile(src, dest);
         }

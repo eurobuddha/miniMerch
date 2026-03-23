@@ -1,33 +1,37 @@
 /**
  * @file Service Worker for miniMerch PWA
- * @version 2.0.0
+ * @version 2.1.0
  */
 
 const CACHE_NAME = 'minimerch-v2';
 
+// Resolve paths relative to the SW's own location so cache keys match
+// the full URLs that Minima serves (e.g. /minidapps/0x1a2b.../style.css).
+const BASE = new URL('./', self.location).href;
+
 // Assets to precache — excludes config.js and products.js which are
 // regenerated on every build and must always be fetched from the network.
 const PRECACHE_ASSETS = [
-    '/',
-    '/index.html',
-    '/style.css',
-    '/app.js',
-    '/db.js',
-    '/cart.js',
-    '/messaging.js',
-    '/price.js',
-    '/i18n.js',
-    '/ui.js',
-    '/mds.js',
-    '/icon.svg',
-    '/favicon.ico',
-    '/minima_logo.png',
-    '/minima_logo_bw.svg',
-    '/usdt_icon.svg'
-];
+    '',
+    'index.html',
+    'style.css',
+    'app.js',
+    'db.js',
+    'cart.js',
+    'messaging.js',
+    'price.js',
+    'i18n.js',
+    'ui.js',
+    'mds.js',
+    'icon.svg',
+    'favicon.ico',
+    'minima_logo.png',
+    'minima_logo_bw.svg',
+    'usdt_icon.svg',
+].map(a => BASE + a);
 
 // Files that change on every build — always fetch from network, never cache.
-const NETWORK_ONLY = ['/config.js', '/products.js'];
+const NETWORK_ONLY_FILES = ['config.js', 'products.js'];
 
 // Install event - cache static assets, then skip waiting only after cache is ready
 self.addEventListener('install', (event) => {
@@ -74,10 +78,10 @@ self.addEventListener('fetch', (event) => {
     if (event.request.method !== 'GET') return;
     if (event.request.url.includes('/api/')) return;
 
-    const url = new URL(event.request.url);
+    const filename = event.request.url.split('/').pop().split('?')[0];
 
     // Network-only: config.js and products.js are regenerated on every build
-    if (NETWORK_ONLY.some(p => url.pathname.endsWith(p))) {
+    if (NETWORK_ONLY_FILES.includes(filename)) {
         event.respondWith(
             fetch(event.request).catch(() =>
                 new Response('', { status: 503, statusText: 'Service Unavailable' })
@@ -105,7 +109,7 @@ self.addEventListener('fetch', (event) => {
                     })
                     .catch(() => {
                         if (event.request.headers.get('accept')?.includes('text/html')) {
-                            return caches.match('/index.html');
+                            return caches.match(BASE + 'index.html');
                         }
                         return new Response('', { status: 503, statusText: 'Service Unavailable' });
                     });
