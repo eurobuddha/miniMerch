@@ -390,6 +390,19 @@ body {
     color: var(--text-light);
 }
 
+.message-status {
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 10px;
+    text-transform: capitalize;
+}
+.status-pending  { background: rgba(255,193,7,0.15);  color: #b8860b; }
+.status-paid     { background: rgba(33,150,243,0.15); color: #1565c0; }
+.status-confirmed{ background: rgba(76,175,80,0.15);  color: #2e7d32; }
+.status-shipped  { background: rgba(156,39,176,0.15); color: #6a1b9a; }
+.status-delivered{ background: rgba(0,150,136,0.15);  color: #00695c; }
+
 .hidden {
     display: none !important;
 }

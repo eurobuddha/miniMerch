@@ -699,6 +699,7 @@ function renderInbox() {
                     ${isSent ? '<span class="message-type sent-type">📤 Sent Reply</span>' : (isBuyerReply ? '<span class="message-type">Buyer Reply</span>' : `
                     <span class="message-size">${escapeHtml(msg.size)}</span>
                     <span class="message-amount">$${escapeHtml(msg.amount)} ${escapeHtml(msg.currency)}</span>
+                    <span class="message-status status-${(msg.status || 'PENDING').toLowerCase()}">${getStatusEmoji(msg.status || 'PENDING')} ${escapeHtml(msg.status || 'PENDING')}</span>
                     `)}
                 </div>
             </div>
@@ -971,6 +972,10 @@ function showMessageDetail(msg) {
         };
     }
     
+    // Pre-populate status selector with this message's current status
+    const statusSelector = document.getElementById('status-selector');
+    if (statusSelector) statusSelector.value = msg.status || 'PENDING';
+
     if (msg.buyerPublicKey) {
         replyAction.style.display = 'block';
         replyWarning.style.display = 'none';
@@ -982,7 +987,7 @@ function showMessageDetail(msg) {
         replyBtn.disabled = true;
         replyBtn.style.opacity = '0.5';
     }
-    
+
     modal.classList.remove('hidden');
 }
 
