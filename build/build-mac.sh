@@ -50,9 +50,7 @@ cat > "$PROJECT_DIR/pkg.config.json" << 'PKGEOF'
     "scripts": ["src/**/*.js"],
     "assets": [
       "web/**/*",
-      "template/**/*",
-      "item.jpg",
-      "ticket.jpg"
+      "template/**/*"
     ]
   }
 }

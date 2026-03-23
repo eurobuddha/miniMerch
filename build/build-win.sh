@@ -75,9 +75,7 @@ cp "$PROJECT_DIR/web/app.js"      "$STAGING/web/"
 cp -r "$PROJECT_DIR/template/shop/"  "$STAGING/template/shop/"
 cp -r "$PROJECT_DIR/template/inbox/" "$STAGING/template/inbox/"
 
-# Copy default image and package.json (needed for archiver require resolve)
-cp "$PROJECT_DIR/item.jpg"       "$STAGING/"
-[ -f "$PROJECT_DIR/ticket.jpg" ] && cp "$PROJECT_DIR/ticket.jpg" "$STAGING/"
+# Copy template files (web/ and template/ already copied above)
 
 # Copy dependencies (archiver + commander)
 mkdir -p "$STAGING/node_modules"

@@ -1650,7 +1650,7 @@ function renderCardHTML(i) {
     return `
         <div class="product-card" data-index="${i}">
             <div class="product-image-container">
-                <img id="product-image-${i}" src="item.jpg" alt="Product" class="product-image">
+                <img id="product-image-${i}" src="icon.png" alt="Product" class="product-image">
             </div>
 
             <div class="product-info">

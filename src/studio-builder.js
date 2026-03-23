@@ -18,7 +18,7 @@ const IS_PKG = !!process.pkg;
 const SHOP_TEMPLATE_DIR  = path.join(__dirname, '..', 'template', 'shop');
 const INBOX_TEMPLATE_DIR = path.join(__dirname, '..', 'template', 'inbox');
 // Default image — also bundled
-const DEFAULT_ITEM_JPG   = path.join(__dirname, '..', 'item.jpg');
+const DEFAULT_ITEM_JPG   = path.join(__dirname, '..', 'template', 'shop', 'icon.png');
 // Output dir passed in by caller (already resolved to real fs by studio.js)
 
 function ensureDir(d) { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); }

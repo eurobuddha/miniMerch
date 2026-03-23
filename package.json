@@ -17,9 +17,7 @@
     ],
     "assets": [
       "web/**/*",
-      "template/**/*",
-      "item.jpg",
-      "ticket.jpg"
+      "template/**/*"
     ],
     "outputPath": "release"
   },
@@ -27,9 +25,7 @@
     "src/",
     "template/",
     "web/",
-    "build/",
-    "item.jpg",
-    "ticket.jpg"
+    "build/"
   ],
   "keywords": [
     "minima",

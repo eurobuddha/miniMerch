@@ -224,7 +224,7 @@ async function handleBuild(req, res) {
         const imagePaths = products.map(p =>
             p.imagePath && fs.existsSync(p.imagePath)
                 ? p.imagePath
-                : path.join(__dirname, '..', 'item.jpg')
+                : path.join(__dirname, '..', 'template', 'shop', 'icon.png')
         );
 
         // Set shop name on first product for dapp.conf headline

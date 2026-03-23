@@ -219,8 +219,8 @@ async function buildShopMiniDapp(products, imagePaths, slippageRate) {
                 copyFileSync(imgPath, path.join(tempDir, `item_${idx}${ext}`));
                 console.log(`   ✓ Copied: item_${idx}${ext} (${product.name})`);
             } else {
-                // Fall back to default item.jpg, renamed to item_N.jpg
-                const defaultImg = path.join(SHOP_TEMPLATE_DIR, 'item.jpg');
+                // Fall back to default icon.png, renamed to item_N.jpg
+                const defaultImg = path.join(SHOP_TEMPLATE_DIR, 'icon.png');
                 if (fs.existsSync(defaultImg)) {
                     copyFileSync(defaultImg, path.join(tempDir, `item_${idx}.jpg`));
                     console.log(`   ✓ Copied: item_${idx}.jpg (default, ${product.name})`);
@@ -523,7 +523,7 @@ async function runGenerate(options) {
    Description: ${product.description}
 `);
 
-    await buildShopMiniDapp([product], [options.image || path.join(__dirname, '..', 'item.jpg')], options.slippage || 10);
+    await buildShopMiniDapp([product], [options.image || path.join(__dirname, '..', 'template', 'shop', 'icon.png')], options.slippage || 10);
     await buildInboxMiniDapp();
 
     console.log(`
@@ -627,7 +627,7 @@ async function runGenerateMulti() {
     for (let i = 0; i < 8; i++) {
         const product = await promptProduct(rl, i);
         if (!product) break;
-        imagePaths.push(product.image || path.join(__dirname, '..', 'item.jpg'));
+        imagePaths.push(product.image || path.join(__dirname, '..', 'template', 'shop', 'icon.png'));
         delete product.image;
         products.push(product);
         console.log(`  ✓ Added: ${product.name}`);
