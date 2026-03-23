@@ -674,10 +674,11 @@ function renderInbox() {
     console.log('RENDER:', messages.length, 'messages for view:', currentView, 'status:', currentStatusFilter || 'all');
     
     if (messages.length === 0) {
+        const statusNote = currentStatusFilter ? ` with status ${currentStatusFilter.charAt(0) + currentStatusFilter.slice(1).toLowerCase()}` : '';
         inboxList.innerHTML = `
             <div class="empty-inbox">
                 <div class="empty-icon">${currentView === 'inbox' ? '📭' : (currentView === 'sent' ? '📤' : '✅')}</div>
-                <p>${currentView === 'inbox' ? 'No unread orders' : (currentView === 'sent' ? 'No sent replies' : 'No orders yet')}</p>
+                <p>${currentView === 'inbox' ? 'No unread orders' : (currentView === 'sent' ? 'No sent replies' : 'No orders yet')}${statusNote}</p>
                 <p class="empty-hint">${currentView === 'sent' ? 'Replies you send to buyers will appear here' : 'Orders from your shops will appear here'}</p>
                 ${currentView !== 'sent' ? '<button class="refresh-btn" id="refresh-btn">🔄 Check for Orders</button>' : ''}
             </div>
@@ -699,7 +700,7 @@ function renderInbox() {
                     ${isSent ? '<span class="message-type sent-type">📤 Sent Reply</span>' : (isBuyerReply ? '<span class="message-type">Buyer Reply</span>' : `
                     <span class="message-size">${escapeHtml(msg.size)}</span>
                     <span class="message-amount">$${escapeHtml(msg.amount)} ${escapeHtml(msg.currency)}</span>
-                    <span class="message-status status-${(msg.status || 'PENDING').toLowerCase()}">${getStatusEmoji(msg.status || 'PENDING')} ${escapeHtml(msg.status || 'PENDING')}</span>
+                    <span class="message-status status-${(msg.status || 'PENDING').toLowerCase()}">${getStatusEmoji(msg.status || 'PENDING')} ${escapeHtml((msg.status || 'PENDING').charAt(0) + (msg.status || 'PENDING').slice(1).toLowerCase())}</span>
                     `)}
                 </div>
             </div>
@@ -823,11 +824,12 @@ function showMessageDetail(msg) {
         
         replyBtn.disabled = true;
         replyBtn.style.opacity = '0.5';
-        
+        document.getElementById('status-section').style.display = 'none';
+
         modal.classList.remove('hidden');
         return;
     }
-    
+
     if (isBuyerReply) {
         document.getElementById('modal-title').textContent = '↩️ Buyer Reply: ' + msg.ref;
         document.getElementById('modal-direction').textContent = !msg.read ? '📨 Unread' : '📧 Read';
@@ -875,11 +877,13 @@ function showMessageDetail(msg) {
             replyBtn.style.opacity = '0.5';
         }
         
+        document.getElementById('status-section').style.display = 'none';
         modal.classList.remove('hidden');
         return;
     }
-    
+
     // Regular ORDER
+    document.getElementById('status-section').style.display = '';
     document.getElementById('modal-title').textContent = 'Order: ' + msg.ref;
     document.getElementById('modal-direction').textContent = !msg.read ? '📨 Unread' : '📧 Read';
     setTxid(msg.coinid || '-');
