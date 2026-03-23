@@ -940,9 +940,6 @@ async function processPayment() {
 
             if (payResponse && payResponse.status) {
                 completePayment(payResponse, payBtn);
-                // Clear cart on successful payment
-                cart = [];
-                updateCartBadge();
             } else {
                 showPaymentStatus((payResponse?.error || 'Payment may have failed') + ' (orders were sent)', 'error');
                 if (payBtn) { payBtn.disabled = false; payBtn.querySelector('.btn-text').textContent = '💸 Pay Now'; }
@@ -1065,7 +1062,7 @@ function stampPaymentTxid(ref, txid) {
 function completePayment(payResponse, payBtn) {
     const txid = extractTxid(payResponse) || extractTxid(payResponse?.result) || '';
     const ref = pendingPaymentData?.ref || lastOrderReference;
-    
+
     if (payBtn) {
         payBtn.querySelector('.btn-text').textContent = '✓ Sent!';
         payBtn.classList.add('sent');
@@ -1074,12 +1071,16 @@ function completePayment(payResponse, payBtn) {
 
     // Stamp real payment TXID onto the order record (non-blocking, safe)
     stampPaymentTxid(ref, txid);
-    
+
+    // Clear cart — covers both immediate and pending-approval payment paths
+    clearCart();
+    updateCartBadge();
+
     setTimeout(() => {
         closeModal();
         showConfirmation(txid, ref);
     }, 3000);
-    
+
     pendingPaymentData = null;
 }
 
