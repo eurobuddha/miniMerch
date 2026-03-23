@@ -108,7 +108,7 @@ const VENDOR_CONFIG = {
     vendorPublicKey: "${cfg.vendorPublicKey || ''}",
     inboxPublicKey: "${cfg.inboxPublicKey || ''}",
     appName: "miniMerch",
-    version: "1.0.0"
+    version: "1.1.0"
 };
 `;
 }

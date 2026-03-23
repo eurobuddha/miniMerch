@@ -1,6 +1,6 @@
 {
   "name": "@eurobuddha/mini-merch",
-  "version": "0.4.8",
+  "version": "0.5.0",
   "description": "Build multi-product Minima blockchain shops with a visual desktop app (macOS/Windows) or CLI. Up to 40 products, shopping cart, encrypted orders, live Minima pricing.",
   "main": "src/index.js",
   "bin": {

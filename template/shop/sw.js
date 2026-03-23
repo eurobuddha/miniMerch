@@ -1,10 +1,13 @@
 /**
  * @file Service Worker for miniMerch PWA
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 const CACHE_NAME = 'minimerch-v2';
-const STATIC_ASSETS = [
+
+// Assets to precache — excludes config.js and products.js which are
+// regenerated on every build and must always be fetched from the network.
+const PRECACHE_ASSETS = [
     '/',
     '/index.html',
     '/style.css',
@@ -15,8 +18,6 @@ const STATIC_ASSETS = [
     '/price.js',
     '/i18n.js',
     '/ui.js',
-    '/config.js',
-    '/products.js',
     '/mds.js',
     '/icon.svg',
     '/favicon.ico',
@@ -25,138 +26,89 @@ const STATIC_ASSETS = [
     '/usdt_icon.svg'
 ];
 
-// Install event - cache static assets
+// Files that change on every build — always fetch from network, never cache.
+const NETWORK_ONLY = ['/config.js', '/products.js'];
+
+// Install event - cache static assets, then skip waiting only after cache is ready
 self.addEventListener('install', (event) => {
     console.log('Service Worker: Installing...');
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then((cache) => {
                 console.log('Service Worker: Caching static assets');
-                return cache.addAll(STATIC_ASSETS);
+                return cache.addAll(PRECACHE_ASSETS);
+            })
+            .then(() => {
+                // Only skip waiting once cache is fully populated
+                return self.skipWaiting();
             })
             .catch((err) => {
                 console.error('Service Worker: Cache failed', err);
+                throw err; // Fail the install so the browser retries
             })
     );
-    // Skip waiting to activate immediately
-    self.skipWaiting();
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up old caches and claim clients atomically
 self.addEventListener('activate', (event) => {
     console.log('Service Worker: Activating...');
     event.waitUntil(
-        caches.keys().then((cacheNames) => {
-            return Promise.all(
-                cacheNames
-                    .filter((name) => name !== CACHE_NAME)
-                    .map((name) => {
-                        console.log('Service Worker: Deleting old cache', name);
-                        return caches.delete(name);
-                    })
-            );
-        })
+        Promise.all([
+            caches.keys().then((cacheNames) =>
+                Promise.all(
+                    cacheNames
+                        .filter((name) => name !== CACHE_NAME)
+                        .map((name) => {
+                            console.log('Service Worker: Deleting old cache', name);
+                            return caches.delete(name);
+                        })
+                )
+            ),
+            self.clients.claim()
+        ])
     );
-    // Claim clients immediately
-    self.clients.claim();
 });
 
-// Fetch event - serve from cache or network
+// Fetch event
 self.addEventListener('fetch', (event) => {
-    // Skip non-GET requests
     if (event.request.method !== 'GET') return;
-
-    // Skip API calls
     if (event.request.url.includes('/api/')) return;
 
+    const url = new URL(event.request.url);
+
+    // Network-only: config.js and products.js are regenerated on every build
+    if (NETWORK_ONLY.some(p => url.pathname.endsWith(p))) {
+        event.respondWith(
+            fetch(event.request).catch(() =>
+                new Response('', { status: 503, statusText: 'Service Unavailable' })
+            )
+        );
+        return;
+    }
+
+    // Cache-first for all other static assets
     event.respondWith(
         caches.match(event.request)
-            .then((response) => {
-                // Return cached version if found
-                if (response) {
-                    return response;
-                }
+            .then((cached) => {
+                if (cached) return cached;
 
-                // Fetch from network
                 return fetch(event.request)
                     .then((networkResponse) => {
-                        // Don't cache if not successful
                         if (!networkResponse || networkResponse.status !== 200) {
                             return networkResponse;
                         }
-
-                        // Clone response for caching
                         const responseToCache = networkResponse.clone();
-
-                        caches.open(CACHE_NAME)
-                            .then((cache) => {
-                                cache.put(event.request, responseToCache);
-                            });
-
+                        caches.open(CACHE_NAME).then((cache) => {
+                            cache.put(event.request, responseToCache);
+                        });
                         return networkResponse;
                     })
                     .catch(() => {
-                        // Network failed, try to return offline page for HTML requests
                         if (event.request.headers.get('accept')?.includes('text/html')) {
                             return caches.match('/index.html');
                         }
+                        return new Response('', { status: 503, statusText: 'Service Unavailable' });
                     });
-            })
-    );
-});
-
-// Background sync for pending orders
-self.addEventListener('sync', (event) => {
-    if (event.tag === 'sync-orders') {
-        event.waitUntil(syncPendingOrders());
-    }
-});
-
-/**
- * Sync pending orders
- * @returns {Promise}
- */
-async function syncPendingOrders() {
-    // This would sync any pending orders stored in IndexedDB
-    console.log('Service Worker: Syncing pending orders...');
-    // Implementation depends on your app's needs
-}
-
-// Push notifications (for new orders)
-self.addEventListener('push', (event) => {
-    const data = event.data?.json() || {};
-    const title = data.title || 'New Order!';
-    const options = {
-        body: data.body || 'You have a new order',
-        icon: '/icon.svg',
-        badge: '/favicon.ico',
-        tag: data.tag || 'new-order',
-        requireInteraction: true,
-        data: data
-    };
-
-    event.waitUntil(
-        self.registration.showNotification(title, options)
-    );
-});
-
-// Notification click
-self.addEventListener('notificationclick', (event) => {
-    event.notification.close();
-
-    event.waitUntil(
-        clients.matchAll({ type: 'window' })
-            .then((clientList) => {
-                // Focus existing window if open
-                for (const client of clientList) {
-                    if (client.url === '/' && 'focus' in client) {
-                        return client.focus();
-                    }
-                }
-                // Open new window
-                if (clients.openWindow) {
-                    return clients.openWindow('/');
-                }
             })
     );
 });
