@@ -3,7 +3,7 @@
  * @version 1.0.0
  */
 
-const CACHE_NAME = 'minimerch-v1';
+const CACHE_NAME = 'minimerch-v2';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
