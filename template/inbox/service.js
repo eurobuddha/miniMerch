@@ -205,6 +205,7 @@ function scanForNewMessages() {
             try { coins = JSON.parse(coins); } catch (e) { return; }
         }
         if (!Array.isArray(coins)) return;
+        if (coins.length === 0) return;
 
         MDS.log('SVC inbox: found ' + coins.length + ' coins at MINIMERCH_ADDRESS');
 

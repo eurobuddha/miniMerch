@@ -127,7 +127,7 @@ function generateShopDappConf(shopName, products) {
         version:     '1.1.0',
         headline:    headline,
         description: desc,
-        icon:        './icon.png',
+        icon:        './icon.svg',
         category:    'Shopping',
     }, null, 4);
 }
